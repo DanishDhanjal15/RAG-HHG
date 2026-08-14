@@ -77,6 +77,29 @@ Every one of these started as an assumption that turned out to be wrong:
 | the extractive generator costs ~5–25 ms | **65–127 ms** — the semantic sentence re-scoring dominates | ❌ split into two stages: lexical (0.8 ms, always) + semantic (droppable) |
 | `language_probability` gates transcription quality | **1.00 on every clip, including the mis-transcribed ones**; 0.00 on a pure tone | ❌ it's a *language*-ID score. The gate catches non-speech, not mis-hearing — see below |
 
+### The one that would have killed the live demo
+
+`faiss.IDSelectorBatch` stores a **raw pointer** into a numpy array and does not
+copy it. The original code wrote:
+
+```python
+faiss.swig_ptr(allowed_ids.astype(np.int64))   # astype COPIES
+```
+
+`astype` returns a copy, which is freed on the next line — so FAISS held a
+pointer into freed memory. A textbook use-after-free, and it behaved like one:
+170 unit tests passed, 29 end-to-end tests passed, 16 warm-up searches passed,
+and then the **second real HTTP request took the whole server process down** with
+no Python traceback, because the allocator had finally reused the page.
+
+Fixed by pointing at the cached, already-int64 array (`ascontiguousarray` is a
+no-op there, so no temporary is created) and holding it alive for the call.
+`tests/test_dense_index.py` now runs 300 filtered searches with deliberate
+allocation churn and forced GC — the shape of test that actually reproduces this
+class of bug, rather than the shape that misses it.
+
+Post-fix soak: **80/80 requests, 0 failures, 100% within budget.**
+
 ### The one that changed a design claim
 
 Across 16 recorded clips in four languages, Sarvam returned

@@ -110,10 +110,23 @@ class DenseIndex:
         q = np.ascontiguousarray(query.reshape(1, -1).astype(np.float32))
 
         params = None
+        keepalive: tuple | None = None
+
         if allowed_ids is not None and len(allowed_ids):
-            selector = faiss.IDSelectorBatch(
-                len(allowed_ids), faiss.swig_ptr(allowed_ids.astype(np.int64))
-            )
+            # `IDSelectorBatch` stores a RAW POINTER into this array and does not
+            # copy it, so the array must outlive the search call.
+            #
+            # The subtle version of getting this wrong -- which this code had, and
+            # which crashed the server intermittently -- is
+            # `swig_ptr(allowed_ids.astype(np.int64))`. `astype` COPIES by default,
+            # so the pointer is taken into a temporary that is freed on the next
+            # line: a use-after-free that survives most calls and segfaults
+            # whenever the allocator happens to reuse the page. `ascontiguousarray`
+            # returns the input unchanged when it is already int64 and contiguous
+            # (which the cached filter arrays are), so no temporary is created.
+            ids64 = np.ascontiguousarray(allowed_ids, dtype=np.int64)
+            selector = faiss.IDSelectorBatch(len(ids64), faiss.swig_ptr(ids64))
+
             if self.cfg.dense.index_type == "hnsw":
                 params = faiss.SearchParametersHNSW()
                 params.efSearch = self.cfg.dense.hnsw.ef_search
@@ -121,15 +134,19 @@ class DenseIndex:
                 params = faiss.SearchParametersIVF()
                 params.nprobe = self.cfg.dense.ivfpq.nprobe
             params.sel = selector
-            # Keep the selector alive for the duration of the call -- FAISS holds
-            # a raw pointer and a GC here is a segfault.
-            self._live_selector = selector
+
+            # Hold the array AND the selector on a local for the duration of the
+            # call. A local is enough and is thread-safe; the previous version
+            # stashed only the selector on `self`, which both missed the array and
+            # would have raced across concurrent requests.
+            keepalive = (ids64, selector)
 
         scores, ids = (
             self.index.search(q, k, params=params)
             if params is not None
             else self.index.search(q, k)
         )
+        del keepalive
         return ids[0], scores[0]
 
     def search_batch(self, queries: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:

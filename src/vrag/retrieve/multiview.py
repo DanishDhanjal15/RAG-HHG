@@ -133,7 +133,10 @@ class MultiViewRetriever:
                 mask &= self.store.lang_mask(list(plan.lang_filter))
             if view_restricted:
                 mask &= self.store.view_mask(list(views))
-            cached = np.flatnonzero(mask).astype(np.int64)
+            # int64 + contiguous, and CACHED -- so the array FAISS takes a raw
+            # pointer into is owned here and outlives every search that uses it.
+            # See DenseIndex.search for why that matters.
+            cached = np.ascontiguousarray(np.flatnonzero(mask), dtype=np.int64)
             self._lang_mask_cache[key] = cached
         return cached
 

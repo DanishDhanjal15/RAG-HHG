@@ -245,6 +245,11 @@ server:
   cors_origins: ["*"]
   max_audio_bytes: 10485760       # 10 MB
   warm_on_boot: true
+  # Rounds of an 8-query multilingual warm-up at boot. One request is enough to
+  # warm ONNX and the mmapped store, but not the budget manager's per-stage
+  # statistics -- below ~8 samples it budgets from configured guesses, and a real
+  # request was measured overrunning at 282ms because of it.
+  warm_rounds: 2
 
 stt:
   provider: sarvam                # sarvam | elevenlabs

@@ -87,19 +87,37 @@ class BudgetRegistry:
         measured = self.stats(stage).percentile(p)
         return fallback_ms if measured is None else measured
 
-    def snapshot(self) -> dict[str, dict[str, float | int]]:
+    def snapshot(self) -> dict[str, dict[str, float | int | None]]:
+        """Per-stage percentiles, or ``None`` where there is not enough data yet.
+
+        Deliberately not ``0.0`` for the cold case. A reported p50 of 0.00 ms is
+        indistinguishable from a genuinely instant stage, so a dashboard would
+        show a confident wrong number instead of an honest gap. ``None``
+        serialises to JSON ``null`` and renders as "--".
+        """
         with self._lock:
             names = list(self._stats)
-        out = {}
-        for name in names:
-            stats = self._stats[name]
-            out[name] = {
-                "n": stats.count,
-                "p50": stats.percentile(50) or 0.0,
-                "p90": stats.percentile(90) or 0.0,
-                "p100": stats.percentile(100) or 0.0,
+        return {
+            name: {
+                "n": self._stats[name].count,
+                "p50": self._stats[name].percentile(50),
+                "p90": self._stats[name].percentile(90),
+                "p100": self._stats[name].percentile(100),
             }
-        return out
+            for name in names
+        }
+
+    @property
+    def warm(self) -> bool:
+        """True once every recorded stage has enough samples to estimate a tail.
+
+        Until this is true the manager budgets from configured guesses rather
+        than measurement, so early requests can overrun. The server warms at boot
+        specifically to get past this before the first user request.
+        """
+        with self._lock:
+            stats = list(self._stats.values())
+        return bool(stats) and all(s.percentile(90) is not None for s in stats)
 
 
 GLOBAL_REGISTRY = BudgetRegistry()

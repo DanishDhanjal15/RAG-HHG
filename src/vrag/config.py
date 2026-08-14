@@ -293,6 +293,7 @@ class ServerCfg(BaseModel):
     cors_origins: list[str] = Field(default_factory=lambda: ["*"])
     max_audio_bytes: int = 10 * 1024 * 1024
     warm_on_boot: bool = True
+    warm_rounds: int = 2
 
 
 class SarvamCfg(BaseModel):

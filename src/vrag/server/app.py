@@ -60,9 +60,37 @@ async def lifespan(app: FastAPI):  # noqa: ANN201
     app.state.boot_seconds = round(time.perf_counter() - app.state.boot_started, 2)
 
     if cfg.server.warm_on_boot:
-        # One real request through the whole graph, so the first user request does
-        # not pay graph optimization and page-faults on top of its own work.
-        app.state.pipeline.answer_text("warmup", lang="en")
+        # Warm with a BATCH, not a single request. Two different things need
+        # warming and only one of them is fixed by one call:
+        #
+        #   1. ONNX graph optimization, arena allocation, page-faulting the mmapped
+        #      store -- one request covers this.
+        #   2. The budget manager's per-stage statistics. It needs enough samples
+        #      to estimate a p90; below that it falls back to configured guesses,
+        #      and those guesses are what let an early request overrun the budget.
+        #      This was observed: request 3 came in at 282ms against a 200ms budget.
+        #
+        # Warming across languages also builds each language-filter id array, so no
+        # user request pays for one.
+        warm_queries = [
+            ("what is a corporation", "en"),
+            ("how long does digestion take", "en"),
+            ("कॉर्पोरेशन क्या है?", "hi"),
+            ("सामुदायिक कानूनी सेवा क्या है", "hi"),
+            ("நிறுவனம் என்றால் என்ன?", "ta"),
+            ("பிரசவம் என்றால் என்ன?", "ta"),
+            ("কর্পোরেশন কি?", "bn"),
+            ("দ্রুততম বাইক চাকা", "bn"),
+        ]
+        warm_start = time.perf_counter()
+        for _ in range(cfg.server.warm_rounds):
+            for text, lang in warm_queries:
+                app.state.pipeline.answer_text(text, lang=lang)
+        app.state.warm_seconds = round(time.perf_counter() - warm_start, 2)
+        app.state.warm_requests = cfg.server.warm_rounds * len(warm_queries)
+    else:
+        app.state.warm_seconds = 0.0
+        app.state.warm_requests = 0
 
     yield
     app.state.pipeline.close()
@@ -144,6 +172,12 @@ def create_app() -> FastAPI:
         return JSONResponse(
             {
                 "boot_seconds": app.state.boot_seconds,
+                "warm_seconds": getattr(app.state, "warm_seconds", 0.0),
+                "warm_requests": getattr(app.state, "warm_requests", 0),
+                # False means the budget manager is still estimating stage costs
+                # from config rather than measurement, so early latencies are not
+                # representative. Exposed rather than hidden.
+                "budget_warm": GLOBAL_REGISTRY.warm,
                 "budget_ms": cfg.budget.core_budget_ms,
                 "stages": GLOBAL_REGISTRY.snapshot(),
                 "spans": p.tracer.percentiles(cfg.bench.latency.percentiles),

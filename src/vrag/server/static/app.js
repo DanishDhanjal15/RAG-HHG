@@ -64,6 +64,12 @@ async function loadHealth() {
     const m = await (await fetch("/api/metrics")).json();
     BUDGET_MS = m.budget_ms ?? 200;
     $("budget-ms").textContent = BUDGET_MS;
+    // budget_warm === false means the manager is still budgeting from configured
+    // estimates rather than measurement, so early latencies are not representative.
+    // Say so rather than letting the first numbers be read as steady state.
+    if (m.budget_warm === false) {
+      $("health-text").textContent += " · warming";
+    }
   } catch { /* non-fatal */ }
 }
 
