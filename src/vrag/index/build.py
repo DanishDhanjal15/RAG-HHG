@@ -123,26 +123,61 @@ def build_chunks(cfg: Config, embedder: OnnxEmbedder, progress: Progress = _noop
 def build_vectors(
     cfg: Config, embedder: OnnxEmbedder, progress: Progress = _noop, slice_size: int = 8192
 ) -> dict:
+    """Embed every chunk into an on-disk float32 memmap. **Resumable.**
+
+    Resumability matters more here than anywhere else in the build. This is the
+    multi-hour stage, and the file size tells you nothing about progress --
+    ``np.memmap(mode="w+")`` preallocates the full array up front, so a
+    half-finished run looks byte-identical to a finished one. Without a progress
+    marker, any interruption silently costs the entire elapsed time.
+
+    That is not hypothetical: this stage was killed at 40.5% by a process restart
+    and had to start over. The marker below records the last fully-written row, so
+    a rerun continues from there.
+    """
     store = ChunkStore(cfg.paths.index_dir / "chunks")
     n = len(store)
     dim = cfg.embedding.dim
 
     path = cfg.paths.index_dir / VECTORS_FILE
-    vectors = np.memmap(path, dtype=np.float32, mode="w+", shape=(n, dim))
+    marker = cfg.paths.index_dir / ".embed.progress"
+
+    # Resume only if the existing file matches the expected shape exactly. A
+    # mismatch means the chunk set changed underneath us, and continuing would
+    # interleave vectors from two different corpora.
+    resume_from = 0
+    expected_bytes = n * dim * 4
+    if marker.exists() and path.exists() and path.stat().st_size == expected_bytes:
+        try:
+            done = int(json.loads(marker.read_text(encoding="utf-8"))["rows"])
+            resume_from = max(0, min(done, n))
+        except (ValueError, KeyError, json.JSONDecodeError):
+            resume_from = 0
+
+    mode = "r+" if resume_from else "w+"
+    vectors = np.memmap(path, dtype=np.float32, mode=mode, shape=(n, dim))
+    if resume_from:
+        progress("embed (resumed)", resume_from / n)
 
     t0 = time.perf_counter()
-    for start in range(0, n, slice_size):
+    for start in range(resume_from, n, slice_size):
         end = min(start + slice_size, n)
         texts = store.iter_embed_texts(start, end)
         vectors[start:end] = embedder.encode_passages(texts)
+        # Flush BEFORE recording progress, so the marker can never claim rows
+        # that are not actually on disk.
+        vectors.flush()
+        marker.write_text(json.dumps({"rows": end, "total": n}), encoding="utf-8")
         progress("embed", end / n)
 
     vectors.flush()
     del vectors
+    marker.unlink(missing_ok=True)
 
     return {
         "vectors": n,
         "dim": dim,
+        "resumed_from": resume_from,
         "seconds": round(time.perf_counter() - t0, 1),
         "bytes": path.stat().st_size,
     }
