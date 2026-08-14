@@ -158,13 +158,23 @@ VRAG_CONFIG=configs/dev.yaml vrag serve
 ## Benchmarks
 
 ```bash
-python bench/run_retrieval_eval.py     # chunking ablation      → docs/CHUNKING.md
-python bench/run_latency.py --chart    # latency percentiles    → docs/LATENCY.md
-python bench/run_guardrail_eval.py     # adversarial + control  → docs/GUARDRAILS.md
-python bench/calibrate_thresholds.py   # OOD thresholds         → docs/CALIBRATION.md
+vrag bench          # runs all four in the right order, regenerates docs/
 ```
 
-All four write both a human-readable report under `docs/` and raw JSON under
+Or individually:
+
+```bash
+python bench/calibrate_thresholds.py   # OOD thresholds         → docs/CALIBRATION.md
+python bench/run_retrieval_eval.py     # chunking ablation      → docs/CHUNKING.md
+python bench/run_guardrail_eval.py     # adversarial + control  → docs/GUARDRAILS.md
+python bench/run_latency.py --chart    # latency percentiles    → docs/LATENCY.md
+```
+
+The order is not arbitrary: calibration recommends the domain threshold that the
+guardrail evaluation is then scored against, so running them the other way round
+measures the guard on a threshold nobody chose.
+
+All four write a human-readable report under `docs/` and raw JSON under
 `traces/`. The tables in those files are generated, never hand-written.
 
 ---

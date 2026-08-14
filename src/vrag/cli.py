@@ -286,6 +286,81 @@ def propositions(
 
 
 @app.command()
+def bench(
+    calibrate: bool = typer.Option(True, help="Re-calibrate domain thresholds first"),
+    latency_n: int = typer.Option(0, help="Latency queries (0 = config default)"),
+    retrieval_n: int = typer.Option(0, help="Ablation queries (0 = config default)"),
+    audio_dir: str = typer.Option("bench/audio", help="Clips for the STT measurement"),
+) -> None:
+    """Run every benchmark and regenerate the docs/ tables.
+
+    Order matters and is not arbitrary:
+
+    1. **calibrate** first, because it recommends the domain-guard threshold that
+       the guardrail evaluation is then measured against. Running them the other
+       way round scores the guard on a threshold nobody chose.
+    2. **retrieval ablation** next -- it is the slowest and the one whose verdict
+       may change the shipped config.
+    3. **guardrails**, now that thresholds are settled.
+    4. **latency** last, so its numbers describe the configuration everything
+       else just agreed on.
+
+    Each step writes a report under docs/ and raw JSON under traces/.
+    """
+    import subprocess
+    import sys
+
+    cfg = get_config()
+    if not (cfg.paths.index_dir / "dense.faiss").exists():
+        console.print(f"[red]No index at {cfg.paths.index_dir}[/] -- run `vrag build`.")
+        raise typer.Exit(1)
+
+    steps: list[tuple[str, list[str]]] = []
+    if calibrate:
+        steps.append(("calibrate thresholds", ["bench/calibrate_thresholds.py", "--n", "400"]))
+    steps.append((
+        "chunking ablation",
+        ["bench/run_retrieval_eval.py"] + (["--n", str(retrieval_n)] if retrieval_n else []),
+    ))
+    steps.append(("guardrails", ["bench/run_guardrail_eval.py", "--in-corpus", "80"]))
+
+    latency = ["bench/run_latency.py", "--chart"]
+    if latency_n:
+        latency += ["--n", str(latency_n)]
+    if audio_dir and (cfg.paths.data_dir.parent / audio_dir).exists():
+        latency += ["--audio-dir", audio_dir]
+    steps.append(("latency", latency))
+
+    failures: list[str] = []
+    for name, argv in steps:
+        console.rule(f"[bold]{name}")
+        t0 = time.perf_counter()
+        result = subprocess.run([sys.executable, *argv], cwd=str(cfg.paths.data_dir.parent))
+        elapsed = time.perf_counter() - t0
+        if result.returncode != 0:
+            failures.append(name)
+            console.print(f"[red]{name} failed (exit {result.returncode}) after {elapsed:.0f}s[/]")
+        else:
+            console.print(f"[green]{name} ok[/] in {elapsed:.0f}s")
+
+    console.rule("[bold]summary")
+    if failures:
+        console.print(f"[red]{len(failures)} step(s) failed:[/] {', '.join(failures)}")
+        raise typer.Exit(1)
+
+    console.print("[bold green]all benchmarks complete[/]")
+    for doc in ("CALIBRATION.md", "CHUNKING.md", "GUARDRAILS.md", "LATENCY.md"):
+        path = cfg.paths.data_dir.parent / "docs" / doc
+        mark = "[green]✓[/]" if path.exists() else "[yellow]–[/]"
+        console.print(f"  {mark} docs/{doc}")
+    console.print(
+        "\n[dim]Calibration may recommend a different min_top1_score than the one "
+        "configured. If it does, update configs/default.yaml and re-run "
+        "`vrag bench --no-calibrate`.[/]"
+    )
+
+
+@app.command()
 def doctor() -> None:
     """Check that the environment can actually run the pipeline."""
     cfg = get_config()
