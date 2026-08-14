@@ -114,6 +114,7 @@ class Arm:
     sparse: bool
     rerank: bool
     note: str = ""
+    weights: dict[str, float] | None = None   # None = whatever config says
 
 
 def build_arms(enabled: list[ChunkView], has_sparse: bool) -> list[Arm]:
@@ -129,10 +130,71 @@ def build_arms(enabled: list[ChunkView], has_sparse: bool) -> list[Arm]:
     return arms
 
 
+def build_weighting_arms(
+    enabled: list[ChunkView], per_view_ndcg: dict[str, float], has_sparse: bool
+) -> list[Arm]:
+    """Candidate view-weighting schemes, derived from the measured per-view scores.
+
+    This is the part that makes the ablation *choose* rather than merely describe.
+
+    Uniform RRF assumes every run is comparably good. When it isn't -- and the
+    single-view arms are exactly the measurement of that -- averaging a weak run
+    into a strong one drags the strong one down. So the schemes below are
+    generated from what the single-view arms actually scored, and the winner is
+    what ships.
+    """
+    ranked = sorted(per_view_ndcg.items(), key=lambda kv: -kv[1])
+    best = ranked[0][1] or 1.0
+    names = [v.value for v in enabled]
+
+    schemes: list[tuple[str, dict[str, float], str]] = [
+        ("uniform", {n: 1.0 for n in names}, "every view weighted equally"),
+        (
+            "proportional",
+            {n: round(per_view_ndcg.get(n, 0.0) / best, 3) for n in names},
+            "weight ∝ that view's own nDCG@10",
+        ),
+        (
+            "proportional-squared",
+            {n: round((per_view_ndcg.get(n, 0.0) / best) ** 2, 3) for n in names},
+            "as above, squared -- sharper preference for strong views",
+        ),
+    ]
+
+    # Progressively drop the weakest views. If the answer is "one view", the
+    # ablation should be able to say so rather than being unable to express it.
+    for keep in range(len(ranked) - 1, 0, -1):
+        kept = {name for name, _ in ranked[:keep]}
+        dropped = [name for name, _ in ranked[keep:]]
+        schemes.append((
+            f"drop-{'+'.join(dropped)}",
+            {n: (1.0 if n in kept else 0.0) for n in names},
+            f"only {', '.join(sorted(kept))}",
+        ))
+
+    return [
+        Arm(f"w:{label}", enabled, sparse=has_sparse, rerank=False,
+            note=note, weights=weights)
+        for label, weights, note in schemes
+    ]
+
+
 def run_arm(arm: Arm, retriever, reranker, queries, ks: list[int]) -> Metrics:
     metrics = Metrics()
     top_k = max(ks)
 
+    fusion_cfg = retriever.cfg.retrieval.fusion
+    original_weights = dict(fusion_cfg.view_weights)
+    if arm.weights is not None:
+        fusion_cfg.view_weights = dict(arm.weights)
+
+    try:
+        return _run_arm_inner(arm, retriever, reranker, queries, ks, metrics, top_k)
+    finally:
+        fusion_cfg.view_weights = original_weights
+
+
+def _run_arm_inner(arm, retriever, reranker, queries, ks, metrics, top_k):  # noqa: ANN001
     for record in queries:
         gold = set(record.gold_doc_ids)
         plan = plan_text(retriever.cfg, record.query, lang=record.lang, confidence=1.0)
@@ -218,6 +280,28 @@ def main() -> None:
         results[arm.name] = run_arm(arm, retriever, reranker, queries, ks)
         console.print(f"  [green]{arm.name}[/] done in {time.perf_counter() - t0:.1f}s")
 
+    # -- weighting sweep, derived from the single-view results --------------- #
+    per_view_ndcg = {
+        v.value: results[v.value].ndcg10 for v in retriever.enabled_views
+        if v.value in results
+    }
+    weight_arms = build_weighting_arms(
+        retriever.enabled_views, per_view_ndcg, sparse is not None
+    )
+    console.print("[bold]Weighting sweep[/]")
+    for arm in weight_arms:
+        t0 = time.perf_counter()
+        results[arm.name] = run_arm(arm, retriever, reranker, queries, ks)
+        console.print(f"  [green]{arm.name}[/] done in {time.perf_counter() - t0:.1f}s")
+    arms = arms + weight_arms
+
+    # The winner among fused configurations, and whether it actually beats the
+    # best single view -- the question the whole exercise exists to answer.
+    best_single = max(per_view_ndcg.items(), key=lambda kv: kv[1])
+    fused_names = [a.name for a in arms if a.name.startswith(("fused", "w:"))]
+    best_fused = max(fused_names, key=lambda n: results[n].ndcg10)
+    multiview_wins = results[best_fused].ndcg10 > best_single[1]
+
     # -- render ------------------------------------------------------------- #
     table = Table(title=f"Chunking ablation ({len(queries):,} queries, doc-level metrics)")
     table.add_column("arm")
@@ -237,6 +321,30 @@ def main() -> None:
         )
     console.print(table)
 
+    verdict = Table(title="Verdict")
+    verdict.add_column("question"); verdict.add_column("answer")
+    verdict.add_row("best single view", f"{best_single[0]}  (nDCG@10 {best_single[1]:.3f})")
+    verdict.add_row("best fused config", f"{best_fused}  (nDCG@10 {results[best_fused].ndcg10:.3f})")
+    verdict.add_row(
+        "does multi-view earn its keep?",
+        "[green]yes[/]" if multiview_wins else
+        "[red]NO -- a single view is better; simplify[/]",
+    )
+    if not multiview_wins:
+        verdict.add_row(
+            "[yellow]recommended[/]",
+            f"[yellow]set chunking to {best_single[0]} only, or use the winning "
+            f"weights below[/]",
+        )
+    console.print(verdict)
+
+    winning = next((a for a in arms if a.name == best_fused), None)
+    if winning is not None and winning.weights:
+        console.print("\n[bold]Recommended view weights[/] (configs/default.yaml):")
+        console.print("  retrieval.fusion.view_weights:")
+        for name, w in winning.weights.items():
+            console.print(f"    {name}: {w}")
+
     out = cfg.paths.data_dir.parent / args.out
     out.parent.mkdir(parents=True, exist_ok=True)
     lines = [
@@ -252,6 +360,33 @@ def main() -> None:
         "  documents into more pieces",
         "- each single-view arm searches with a FAISS ID selector restricted to that",
         "  view, so every arm gets its own full top-k",
+        "",
+        "### Reading the single-view rows",
+        "",
+        "Views do not all cover the whole corpus, and recall must be read with that in",
+        "mind. `fixed_overlap` only emits chunks for passages above its token floor",
+        "(~35% of them), and `sentence_window` and `semantic` skip passages too short to",
+        "split. A low R@20 for those arms is partly a **coverage ceiling** -- they cannot",
+        "retrieve a document they never chunked -- not purely a ranking failure. Only",
+        "`atomic` covers every passage by construction.",
+        "",
+        "That is a fair comparison of *what each view contributes to the index*, which is",
+        "the decision being made here, but it is not a claim that one chunking algorithm",
+        "ranks better than another in isolation.",
+        "",
+        "## Verdict",
+        "",
+        f"- best single view: **{best_single[0]}** (nDCG@10 {best_single[1]:.3f})",
+        f"- best fused config: **{best_fused}** (nDCG@10 {results[best_fused].ndcg10:.3f})",
+        "",
+        (
+            "Multi-view fusion **earns its keep** on this corpus."
+            if multiview_wins
+            else "**Multi-view fusion does NOT beat the best single view here.** Uniform RRF "
+            "assumes every run is comparably good; when one view is much weaker, averaging "
+            "it in drags the strong one down. The weighting sweep below is the response — "
+            "and if no weighting recovers it, the honest conclusion is to ship fewer views."
+        ),
         "",
         "| arm | " + " | ".join(f"R@{k}" for k in ks) + " | MRR@10 | nDCG@10 | p50 ms | note |",
         "|---|" + "---|" * (len(ks) + 4),
