@@ -1,0 +1,19 @@
+# Keep the Cloud Build upload small. Without this, `gcloud builds submit` would
+# upload the raw parquet shards (1.4 GB), the built index (~700 MB) and the
+# exported ONNX models — none of which the image needs, because the index is
+# fetched at boot and the models are exported inside the build.
+.git/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+data/
+models/
+traces/
+bench/audio/
+
+.env
+.env.local

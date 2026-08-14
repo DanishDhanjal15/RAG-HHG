@@ -143,8 +143,12 @@ class ChunkStore:
         self._texts = np.memmap(path / "texts.bin", dtype=np.uint8, mode="r")
         self.offsets = np.load(path / "offsets.npy", mmap_mode="r")
 
-        self._embed_texts = np.memmap(path / "embed.bin", dtype=np.uint8, mode="r")
-        self.embed_offsets = np.load(path / "embed_offsets.npy", mmap_mode="r")
+        # The embed-text blob is BUILD-time only: it feeds the embedder and the
+        # BM25 indexer, and nothing on the serve path reads it. Opening it lazily
+        # means a deployed index does not have to ship it -- worth ~150 MB, which
+        # on a scale-to-zero host is ~150 MB off every cold start.
+        self._embed_texts: np.memmap | None = None
+        self.embed_offsets: np.ndarray | None = None
 
         meta = np.load(path / "meta.npz", mmap_mode="r")
         self.query_id = meta["query_id"]
@@ -173,7 +177,25 @@ class ChunkStore:
     def texts(self, chunk_ids: Iterable[int]) -> list[str]:
         return [self.text(i) for i in chunk_ids]
 
+    def _ensure_embed_store(self) -> None:
+        if self._embed_texts is not None:
+            return
+        blob = self.path / "embed.bin"
+        offsets = self.path / "embed_offsets.npy"
+        if not blob.exists() or not offsets.exists():
+            raise FileNotFoundError(
+                f"{blob} is missing. It is a build-time artifact and is excluded "
+                "from published indexes on purpose; rebuild locally to use it."
+            )
+        self._embed_texts = np.memmap(blob, dtype=np.uint8, mode="r")
+        self.embed_offsets = np.load(offsets, mmap_mode="r")
+
+    @property
+    def has_embed_texts(self) -> bool:
+        return (self.path / "embed.bin").exists()
+
     def embed_text(self, chunk_id: int) -> str:
+        self._ensure_embed_store()
         lo, hi = int(self.embed_offsets[chunk_id]), int(self.embed_offsets[chunk_id + 1])
         return bytes(self._embed_texts[lo:hi]).decode("utf-8", errors="replace")
 
@@ -183,6 +205,7 @@ class ChunkStore:
     def iter_embed_texts(self, start: int = 0, end: int | None = None) -> list[str]:
         """Bulk slice for index building. Decoding one large byte range and
         splitting is markedly faster than 850k individual slice-and-decode calls."""
+        self._ensure_embed_store()
         end = self.size if end is None else min(end, self.size)
         if start >= end:
             return []

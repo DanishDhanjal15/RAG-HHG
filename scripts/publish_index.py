@@ -80,9 +80,20 @@ def main() -> None:
         repo_type=repo_type,
         folder_path=str(index_dir),
         commit_message=args.message,
-        # Never publish build markers -- they would make a downloaded index look
-        # already-built to a machine that has not built anything.
-        ignore_patterns=[".*.done", "vectors.f32"],
+        ignore_patterns=[
+            # Build markers: a downloaded index must not look already-built to a
+            # machine that has built nothing.
+            ".*.done",
+            ".embed.progress",
+            # Build-time only. vectors.f32 is the raw fp32 memmap (FAISS keeps its
+            # own quantized copy); embed.bin feeds the embedder and BM25 indexer
+            # and nothing on the serve path reads it. Together they are the bulk of
+            # the directory, and on a scale-to-zero host every megabyte here is a
+            # megabyte on every cold start.
+            "vectors.f32",
+            "chunks/embed.bin",
+            "chunks/embed_offsets.npy",
+        ],
     )
 
     console.print(f"\n[bold green]done[/] https://huggingface.co/datasets/{args.repo_id}")

@@ -43,22 +43,43 @@ const STAGE_STYLE = {
 let BUDGET_MS = 200;
 
 /* ── health ─────────────────────────────────────────────────────── */
-async function loadHealth() {
+async function loadHealth(attempt = 0) {
+  // Cold starts are expected, not exceptional. On a scale-to-zero host the first
+  // visitor after an idle period waits ~45s while the container pulls the index
+  // and loads models. Reporting that as "server unreachable" would be both wrong
+  // and the worst possible first impression, so we retry with backoff and say
+  // what is actually happening.
+  const MAX_ATTEMPTS = 40;
   try {
-    const r = await fetch("/api/health");
+    const r = await fetch("/api/health", { cache: "no-store" });
+    if (!r.ok) throw new Error(`status ${r.status}`);
     const h = await r.json();
     $("health-dot").className = "dot ok";
     $("health-text").textContent =
       `${h.chunks.toLocaleString()} chunks · ${h.views.length} views` +
       `${h.sparse ? " · bm25" : ""}${h.reranker ? " · rerank" : ""}` +
       `${h.stt_configured ? "" : " · no STT key"}`;
+    $("mic").disabled = !h.stt_configured;
     if (!h.stt_configured) {
-      $("mic").disabled = true;
       $("mic-label").textContent = "Speech-to-text key not configured — type instead";
     }
+    $("send").disabled = false;
   } catch {
+    if (attempt < MAX_ATTEMPTS) {
+      $("health-dot").className = "dot";
+      $("health-text").textContent =
+        `waking up… (${attempt + 1})  first visit after idle takes ~45s`;
+      $("send").disabled = true;
+      $("mic").disabled = true;
+      $("mic-label").textContent = "Starting up — the container is cold";
+      // Poll quickly at first, then ease off.
+      const delay = attempt < 5 ? 1500 : 3000;
+      setTimeout(() => loadHealth(attempt + 1), delay);
+      return;
+    }
     $("health-dot").className = "dot bad";
     $("health-text").textContent = "server unreachable";
+    $("mic-label").textContent = "Server unavailable — try reloading";
   }
   try {
     const m = await (await fetch("/api/metrics")).json();

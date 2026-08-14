@@ -68,11 +68,17 @@ COPY --from=exporter --chown=app:app /models ./models
 RUN mkdir -p /app/data/index /app/traces && chown -R app:app /app/data /app/traces
 
 USER app
+
+# HF Spaces expects 7860; Cloud Run injects its own $PORT and ignores EXPOSE.
+# Defaulting the variable keeps one image working on both.
+ENV PORT=7860
 EXPOSE 7860
 
-# start-period is generous on purpose: a cold Space downloads the index (~170 MB)
-# and then warms ONNX and the budget manager before it will answer.
+# start-period is generous on purpose: a cold start downloads the index and then
+# warms ONNX and the budget manager before it will answer.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=300s --retries=3 \
-  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:7860/api/health',timeout=4).status==200 else 1)"
+  CMD python -c "import os,urllib.request,sys; p=os.environ.get('PORT','7860'); sys.exit(0 if urllib.request.urlopen(f'http://localhost:{p}/api/health',timeout=4).status==200 else 1)"
 
-CMD ["uvicorn", "vrag.server.app:app", "--host", "0.0.0.0", "--port", "7860"]
+# Shell form so $PORT expands. Cloud Run sets it; HF Spaces does not, hence the
+# ENV default above.
+CMD exec uvicorn vrag.server.app:app --host 0.0.0.0 --port ${PORT}

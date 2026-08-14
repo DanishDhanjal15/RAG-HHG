@@ -27,13 +27,15 @@ from vrag.config import Config, get_secrets
 # The files that constitute a usable index. Presence of the dense index alone is
 # not enough -- a half-downloaded index that boots and then fails on the first
 # query is worse than one that refuses to boot.
+# Note what is NOT here: chunks/embed.bin and chunks/embed_offsets.npy. Those are
+# build-time artifacts (they feed the embedder and the BM25 indexer) and nothing
+# on the serve path reads them, so a deployed index omits them -- ~150 MB saved on
+# every cold start of a scale-to-zero host.
 REQUIRED = (
     "dense.faiss",
     "centroid.npy",
     "chunks/texts.bin",
     "chunks/offsets.npy",
-    "chunks/embed.bin",
-    "chunks/embed_offsets.npy",
     "chunks/meta.npz",
     "chunks/vocab.json",
 )
