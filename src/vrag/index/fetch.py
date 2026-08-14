@@ -71,7 +71,7 @@ def ensure_index(cfg: Config, force: bool = False) -> bool:
     t0 = time.perf_counter()
     snapshot_download(
         repo_id=repo_id,
-        repo_type="dataset",
+        repo_type=cfg.remote_index.repo_type,
         revision=cfg.remote_index.revision,
         local_dir=str(staging),
         token=get_secrets().hf_token or None,

@@ -29,6 +29,8 @@ console = Console()
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-id", required=True, help="e.g. your-name/vrag-index")
+    parser.add_argument("--repo-type", default=None, choices=["dataset", "model"],
+                        help="defaults to remote_index.repo_type in config")
     parser.add_argument("--private", action="store_true")
     parser.add_argument("--message", default="Publish prebuilt index")
     args = parser.parse_args()
@@ -58,9 +60,10 @@ def main() -> None:
 
     token = get_secrets().hf_token or None
     api = HfApi(token=token)
+    repo_type = args.repo_type or cfg.remote_index.repo_type
 
-    console.print(f"creating/updating dataset repo [bold]{args.repo_id}[/]")
-    api.create_repo(repo_id=args.repo_id, repo_type="dataset",
+    console.print(f"creating/updating {repo_type} repo [bold]{args.repo_id}[/]")
+    api.create_repo(repo_id=args.repo_id, repo_type=repo_type,
                     private=args.private, exist_ok=True)
 
     # Ship the manifest so the deployed index is traceable to the build that
@@ -74,7 +77,7 @@ def main() -> None:
     console.print("uploading (this takes a few minutes)…")
     api.upload_folder(
         repo_id=args.repo_id,
-        repo_type="dataset",
+        repo_type=repo_type,
         folder_path=str(index_dir),
         commit_message=args.message,
         # Never publish build markers -- they would make a downloaded index look

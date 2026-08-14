@@ -349,6 +349,10 @@ class RemoteIndexCfg(BaseModel):
     """
 
     repo_id: str = ""
+    # "dataset" is the natural home for an index, but a plain model repo works
+    # just as well and avoids making the user create a second repo. Both are
+    # arbitrary file stores as far as snapshot_download is concerned.
+    repo_type: Literal["dataset", "model"] = "model"
     revision: str = "main"
     fetch_on_boot: bool = True
 

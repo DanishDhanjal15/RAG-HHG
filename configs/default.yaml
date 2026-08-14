@@ -308,7 +308,8 @@ stt:
 # Leave repo_id empty for local development: nothing here runs and the app expects
 # an index you built yourself with `vrag build`.
 remote_index:
-  repo_id: ""            # e.g. "your-username/vrag-index"
+  repo_id: "danishdhanjal23/RAG-HHB"
+  repo_type: model       # a model repo is an arbitrary file store; works fine
   revision: main
   fetch_on_boot: true
 
