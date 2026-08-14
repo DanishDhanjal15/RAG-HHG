@@ -122,3 +122,24 @@ class TestConfigSanity:
     def test_embedding_max_seq_len_is_within_model_limits(self):
         cfg = load_config()
         assert cfg.embedding.max_seq_len <= 512
+
+    def test_every_budgeted_stage_appears_in_the_latency_report(self):
+        """A stage missing from the report's stage list is silently invisible.
+
+        Regression: `generate_semantic` -- the single most expensive optional
+        stage -- was budgeted and skipped correctly but absent from
+        `STAGE_ORDER`, so the published table showed neither its cost nor the
+        fact that it was being dropped.
+        """
+        import sys
+        from pathlib import Path
+
+        bench = Path(__file__).resolve().parents[1] / "bench"
+        sys.path.insert(0, str(bench))
+        try:
+            from run_latency import STAGE_ORDER
+        finally:
+            sys.path.remove(str(bench))
+
+        missing = set(load_config().budget.stages) - set(STAGE_ORDER)
+        assert not missing, f"budgeted but never reported: {sorted(missing)}"

@@ -26,11 +26,11 @@ leaves thousands of real MSMARCO-XI questions whose documents were never indexed
 
 | signal | population | n | p05 | p25 | p50 | p75 | p95 |
 |---|---|---:|---:|---:|---:|---:|---:|
-| top1 cosine | in-domain | 60 | 0.848 | 0.862 | 0.880 | 0.903 | 0.920 |
-| top1 cosine | unanswerable | 60 | 0.808 | 0.829 | 0.843 | 0.855 | 0.872 |
+| top1 cosine | in-domain | 228 | 0.846 | 0.865 | 0.883 | 0.903 | 0.930 |
+| top1 cosine | unanswerable | 400 | 0.808 | 0.830 | 0.845 | 0.857 | 0.875 |
 | top1 cosine | off-topic | 17 | 0.798 | 0.823 | 0.839 | 0.852 | 0.859 |
-| centroid dist | in-domain | 60 | 0.107 | 0.121 | 0.131 | 0.156 | 0.172 |
-| centroid dist | unanswerable | 60 | 0.111 | 0.122 | 0.133 | 0.146 | 0.179 |
+| centroid dist | in-domain | 228 | 0.106 | 0.121 | 0.134 | 0.153 | 0.182 |
+| centroid dist | unanswerable | 400 | 0.105 | 0.119 | 0.133 | 0.150 | 0.183 |
 | centroid dist | off-topic | 17 | 0.107 | 0.119 | 0.135 | 0.171 | 0.188 |
 
 ## Does each signal actually discriminate?
@@ -40,8 +40,8 @@ worthless:
 
 | signal | vs unanswerable | vs off-topic |
 |---|---:|---:|
-| top1 cosine | 0.897 | 0.928 |
-| centroid distance | 0.516 | 0.546 |
+| top1 cosine | 0.898 | 0.938 |
+| centroid distance | 0.496 | 0.539 |
 
 ### The negative result
 
@@ -66,8 +66,8 @@ recommendation below **drops it**.
 The working hypothesis was that unanswerable-but-in-distribution questions
 would be invisible to a domain guard, since the query is genuinely in-domain
 and only the evidence is missing. The AUC says otherwise: top-1 cosine
-separates them from in-domain queries at **0.897**, and at the
-recommended operating point the guard catches **55.0%** of them.
+separates them from in-domain queries at **0.898**, and at the
+recommended operating point the guard catches **50.0%** of them.
 
 The reason it works at all: a query whose own passages were never indexed has
 no *near*-duplicate in the corpus, only topical neighbours, and that shows up as
@@ -75,7 +75,7 @@ a measurably lower best-match cosine. It is a weaker signal than for off-topic
 queries (which are further away still), but it is not noise.
 
 It is not a complete defence, and it is not meant to be. The remaining
-45% is what the **grounding guard** is for: after generation, checking
+50% is what the **grounding guard** is for: after generation, checking
 that the answer is actually attributable to retrieved text catches the cases
 where retrieval returned plausible-looking but non-answering passages.
 
@@ -92,10 +92,10 @@ guardrails:
 
 | | recommended | best-F1 | currently configured |
 |---|---:|---:|---:|
-| min_top1_score | 0.845 | 0.860 | 0.720 |
-| off-topic recall | 58.8% | 94.1% | 0.0% |
-| over-refusal | 5.0% | 21.7% | 0.0% |
-| F1 | 0.667 | 0.696 | 0.000 |
+| min_top1_score | 0.845 | 0.835 | 0.845 |
+| off-topic recall | 58.8% | 47.1% | 0.0% |
+| over-refusal | 4.8% | 2.2% | 0.0% |
+| F1 | 0.526 | 0.533 | 0.000 |
 
 ## On the objective
 

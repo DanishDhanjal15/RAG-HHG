@@ -50,6 +50,7 @@ from vrag.schemas import (
     AudioInput,
     RankedContext,
     RefusalReason,
+    Span,
     Transcript,
 )
 
@@ -280,24 +281,35 @@ class Pipeline:
             # loses paraphrase sensitivity.
             semantic = budget.should_run("generate_semantic")
 
-            with trace.span("generate") as span:
-                t0 = time.perf_counter()
-                answer, semantic_ms = self.generator.generate(
-                    plan.normalized_query,
-                    evidence,
-                    query_lang=plan.lang,
-                    semantic_scoring=semantic,
-                    query_vector=vector,
-                )
-                total_ms = (time.perf_counter() - t0) * 1000
-                budget.record("generate", total_ms - semantic_ms)
-                if semantic:
-                    budget.record("generate_semantic", semantic_ms)
-                span.attributes.update(
-                    strategy=answer.strategy, semantic=semantic,
-                    semantic_ms=round(semantic_ms, 2), chars=len(answer.text),
-                )
-            if not semantic:
+            t0 = time.perf_counter()
+            answer, semantic_ms = self.generator.generate(
+                plan.normalized_query,
+                evidence,
+                query_lang=plan.lang,
+                semantic_scoring=semantic,
+                query_vector=vector,
+            )
+            total_ms = (time.perf_counter() - t0) * 1000
+            lexical_ms = total_ms - semantic_ms
+
+            # Two spans, not one. The budget manager treats these as separate
+            # stages, so the trace has to as well -- a single `generate` span
+            # covering both would report the lexical stage at the combined cost
+            # and make the latency table disagree with the thing enforcing the
+            # budget.
+            budget.record("generate", lexical_ms)
+            trace.add(Span(
+                name="generate", duration_ms=lexical_ms,
+                attributes={"strategy": answer.strategy, "chars": len(answer.text)},
+            ))
+
+            if semantic:
+                budget.record("generate_semantic", semantic_ms)
+                trace.add(Span(
+                    name="generate_semantic", duration_ms=semantic_ms,
+                    attributes={"candidates_rescored": True},
+                ))
+            else:
                 trace.skipped("generate_semantic", "budget")
 
             # -- guard: grounding (optional tier) ----------------------------- #

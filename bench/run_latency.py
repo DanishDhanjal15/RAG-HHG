@@ -79,9 +79,12 @@ class Collector:
 
 
 # --------------------------------------------------------------------------- #
+# Pipeline order. Must include every stage the pipeline emits -- a stage missing
+# here is silently absent from the report, which is how `generate_semantic`
+# (the single most expensive optional stage) went unreported.
 STAGE_ORDER = [
     "input_guard", "embed_query", "dense_search", "sparse_search", "fuse",
-    "rerank", "domain_guard", "generate", "grounding_guard",
+    "rerank", "domain_guard", "generate", "generate_semantic", "grounding_guard",
 ]
 
 
