@@ -1,8 +1,0 @@
-INFO:     127.0.0.1:37531 - "GET /api/health HTTP/1.1" 200 OK
-INFO:     127.0.0.1:37594 - "GET /api/health HTTP/1.1" 200 OK
-INFO:     127.0.0.1:37595 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:37663 - "POST /api/ask HTTP/1.1" 200 OK
-INFO:     127.0.0.1:37664 - "POST /api/ask HTTP/1.1" 200 OK
-INFO:     127.0.0.1:37665 - "POST /api/ask HTTP/1.1" 200 OK
-INFO:     127.0.0.1:37666 - "POST /api/voice HTTP/1.1" 200 OK
-INFO:     127.0.0.1:37677 - "GET /api/metrics HTTP/1.1" 200 OK

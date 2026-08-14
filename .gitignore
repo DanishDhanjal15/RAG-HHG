@@ -14,8 +14,10 @@ data/
 models/
 *.faiss
 *.onnx
-traces/*.sqlite
-traces/*.parquet
+
+# Runtime output: span database, server logs, generated benchmark JSON.
+# The human-readable benchmark reports live in docs/ and ARE tracked.
+traces/
 
 # OS
 Thumbs.db
