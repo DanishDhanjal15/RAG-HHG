@@ -1,0 +1,21 @@
+# Keep the build context small. The raw parquet shards alone are 1.4 GB and are
+# never needed at runtime -- the index is built from them beforehand.
+.venv/
+.git/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+data/raw/
+data/corpus/
+data/index-dev/
+traces/
+models/            # rebuilt in the exporter stage
+docs/*.png
+
+.env
+.env.local
+notebooks/
+*.ipynb

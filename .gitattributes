@@ -1,0 +1,11 @@
+# Normalize line endings so the repo is identical on Windows, Linux and in Docker.
+* text=auto eol=lf
+
+# Binary — never touch.
+*.wav binary
+*.png binary
+*.onnx binary
+*.faiss binary
+*.parquet binary
+*.npy binary
+*.npz binary

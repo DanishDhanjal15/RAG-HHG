@@ -1,0 +1,146 @@
+[
+  {
+    "file": "bn_24821.wav",
+    "lang": "bn",
+    "query_id": 24821,
+    "text": "একটি ফিকা খাদ্যের জন্য উত্তপ্ত ডিম ঠিক আছে।",
+    "speaker": "anushka",
+    "bytes": 84752,
+    "tts_ms": 821.0
+  },
+  {
+    "file": "hi_1058271.wav",
+    "lang": "hi",
+    "query_id": 1058271,
+    "text": "सामुदायिक कानूनी सेवा क्या है",
+    "speaker": "abhilash",
+    "bytes": 55772,
+    "tts_ms": 388.5
+  },
+  {
+    "file": "ta_1058657.wav",
+    "lang": "ta",
+    "query_id": 1058657,
+    "text": "பிரசவம் என்றால் என்ன?",
+    "speaker": "karun",
+    "bytes": 43142,
+    "tts_ms": 496.3
+  },
+  {
+    "file": "en_185255.wav",
+    "lang": "en",
+    "query_id": 185255,
+    "text": "fastest bike wheel",
+    "speaker": "hitesh",
+    "bytes": 37568,
+    "tts_ms": 508.4
+  },
+  {
+    "file": "ta_1035282.wav",
+    "lang": "ta",
+    "query_id": 1035282,
+    "text": "பீட்டர் பிரெக்கின் நிகர மதிப்பு என்ன?",
+    "speaker": "anushka",
+    "bytes": 62832,
+    "tts_ms": 507.2
+  },
+  {
+    "file": "hi_1089932.wav",
+    "lang": "hi",
+    "query_id": 1089932,
+    "text": "औसत अमेरिकी प्रति दिन कितना कचरा उत्पन्न करता है?",
+    "speaker": "abhilash",
+    "bytes": 99240,
+    "tts_ms": 637.2
+  },
+  {
+    "file": "bn_185255.wav",
+    "lang": "bn",
+    "query_id": 185255,
+    "text": "দ্রুততম বাইক চাকা",
+    "speaker": "karun",
+    "bytes": 37940,
+    "tts_ms": 575.8
+  },
+  {
+    "file": "en_65593.wav",
+    "lang": "en",
+    "query_id": 65593,
+    "text": "can chia seeds be planted in house",
+    "speaker": "hitesh",
+    "bytes": 56516,
+    "tts_ms": 409.8
+  },
+  {
+    "file": "ta_1034355.wav",
+    "lang": "ta",
+    "query_id": 1034355,
+    "text": "கன்சாஸ் நகரத்தின் மக்கள் தொகை என்ன?",
+    "speaker": "anushka",
+    "bytes": 66176,
+    "tts_ms": 624.5
+  },
+  {
+    "file": "en_1099729.wav",
+    "lang": "en",
+    "query_id": 1099729,
+    "text": "houston methodist main phone number",
+    "speaker": "abhilash",
+    "bytes": 65432,
+    "tts_ms": 415.4
+  },
+  {
+    "file": "bn_1059909.wav",
+    "lang": "bn",
+    "query_id": 1059909,
+    "text": "দ্বিপাক্ষিক হফম্যান চিহ্ন কী",
+    "speaker": "karun",
+    "bytes": 53916,
+    "tts_ms": 330.7
+  },
+  {
+    "file": "hi_1038107.wav",
+    "lang": "hi",
+    "query_id": 1038107,
+    "text": "हंगेरियन मोमोज में क्या सामग्री होती है",
+    "speaker": "hitesh",
+    "bytes": 67290,
+    "tts_ms": 365.6
+  },
+  {
+    "file": "hi_1054920.wav",
+    "lang": "hi",
+    "query_id": 1054920,
+    "text": "फ्यूमिस क्या है",
+    "speaker": "anushka",
+    "bytes": 24566,
+    "tts_ms": 303.3
+  },
+  {
+    "file": "ta_1099729.wav",
+    "lang": "ta",
+    "query_id": 1099729,
+    "text": "ஹூஸ்டன் முறையின் முக்கிய தொலைபேசி எண்",
+    "speaker": "abhilash",
+    "bytes": 61718,
+    "tts_ms": 385.3
+  },
+  {
+    "file": "en_1038107.wav",
+    "lang": "en",
+    "query_id": 1038107,
+    "text": "what is the ingredients in hungarian dumplings",
+    "speaker": "karun",
+    "bytes": 78064,
+    "tts_ms": 726.1
+  },
+  {
+    "file": "bn_65593.wav",
+    "lang": "bn",
+    "query_id": 65593,
+    "text": "চিয়া বীজ বাড়িতে রোপণ করা যায় কি?",
+    "speaker": "hitesh",
+    "bytes": 60602,
+    "tts_ms": 562.7
+  }
+]

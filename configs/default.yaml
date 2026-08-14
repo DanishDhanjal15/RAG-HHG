@@ -1,0 +1,275 @@
+# Voice-RAG configuration.
+# Every knob that affects latency, recall, or refusal behaviour lives here so that
+# benchmarks are reproducible and the ablation can sweep values without code edits.
+
+paths:
+  data_dir: data
+  raw_dir: data/raw          # downloaded parquet shards
+  corpus_dir: data/corpus    # normalized Document records
+  index_dir: data/index      # faiss + bm25 + chunk store
+  model_dir: models          # exported ONNX encoders
+  trace_dir: traces          # per-request span logs
+
+corpus:
+  repo_id: ai4bharat/MSMARCO-XI
+  split: validation
+  # Shard filenames are flat per-language files, NOT HF dataset configs.
+  # The HF dataset viewer for this repo is broken; we read parquet directly.
+  languages:
+    hi: validation/hinval.parquet
+    ta: validation/tamval.parquet
+    bn: validation/benval.parquet
+  # Each shard is 97,941 rows x ~10 passages. Taking 8.5k queries/lang would yield
+  # ~510k passages -> ~1.8M chunks -> a 1.5 GB index and a multi-hour CPU embed.
+  # These numbers are sized so the corpus stays a ~325 MB int8 index that fits free
+  # hosting while remaining large enough that retrieval is a real problem:
+  # ~224k passages -> ~850k chunks.
+  queries_per_language: 5000
+  # A shared head block gives the SAME queries in all three languages (so the demo
+  # can ask one question in three languages and hit parallel content), while the
+  # rest is disjoint per language so the corpus stays topically diverse.
+  shared_queries: 1000
+  # Index the English parallel passages alongside the translated ones.
+  # This is what makes cross-lingual retrieval possible on this dataset.
+  include_english_parallel: true
+  min_passage_chars: 40
+  max_passages_per_query: 8
+  # Index-build subsample, BY QUERY (see index/build.py:subsample_by_query --
+  # sampling passages directly would drop the gold passage out from under a
+  # surviving query and silently invalidate the ablation).
+  #
+  # Sized against MEASURED hardware, not aspiration. This box embeds ~19 chunks/sec
+  # (int8 ONNX, 4 threads -- and it is genuinely 19/sec: int8 beats fp32 here, and
+  # MORE threads is slower because the 15W part throttles). Measured on the dev
+  # profile, 200 queries cost ~22 min end to end, so cost scales at roughly
+  # 6.6 sec/query. Indexing all 15,000 would be about two days.
+  #
+  # 3,000 queries is ~51k passages -> ~265k chunks -> a ~170 MB index and a ~5.5h
+  # build. That keeps retrieval a real problem (plenty of distractors), leaves
+  # ~2.5k gold-labelled queries for the ablation, and leaves ~12k unindexed
+  # queries to serve as a NATURAL out-of-domain set for threshold calibration.
+  max_queries: 3000
+  seed: 20260814
+
+chunking:
+  # All enabled views are built and indexed into ONE store, tagged by `view`.
+  # Retrieval queries every view and fuses. The ablation (bench/run_retrieval_eval.py)
+  # is what decides which views survive into the deployed config.
+  views:
+    atomic:
+      enabled: true
+    sentence_window:
+      enabled: true
+      window: 1              # return sentence +/- N neighbours as context
+      min_sentence_chars: 25
+      merge_short_into_next: true
+    fixed_overlap:
+      enabled: true
+      # Sized against the MEASURED corpus, not a generic default. Passage token
+      # lengths here are p50=79, p90=130, p99=205 -- the usual 256/64 window with a
+      # 220-token floor fired on 0.6% of passages and produced 4 chunks out of 600,
+      # which is not a view, it's a rounding error. 96/24 above 128 tokens fires on
+      # the top ~10% and actually gives the ablation something to measure.
+      chunk_tokens: 96       # tokenizer-aware, not character-aware
+      overlap_tokens: 24
+      apply_above_tokens: 128
+    semantic:
+      enabled: true
+      breakpoint_percentile: 25   # cut where sentence-gap similarity is in the bottom quartile
+      min_chunk_sentences: 1
+      max_chunk_sentences: 8
+    proposition:
+      enabled: false           # offline LLM extraction; enable after `vrag propositions`
+      top_passages: 20000      # only the most-selected passages, cached to disk
+      max_props_per_passage: 6
+
+  # Chunks are embedded with document context prepended so an isolated chunk
+  # still carries what document it came from.
+  contextual_prefix: true
+
+embedding:
+  model_id: intfloat/multilingual-e5-small
+  dim: 384
+  max_seq_len: 192
+  query_prefix: "query: "
+  passage_prefix: "passage: "
+  onnx:
+    quantize_int8: true
+    # Measured, not assumed. On this 15W Core Ultra U-series, raising intra-op
+    # threads from 4 to 12 made throughput WORSE (19 -> 18 chunks/sec int8,
+    # 13 -> 11 fp32): the part throttles and the extra threads only add
+    # contention. 4 is the measured optimum for both build and serve here.
+    intra_op_threads: 4
+    build_intra_op_threads: 4
+    inter_op_threads: 1
+  batch_size: 256           # build-time only; batches are length-sorted
+
+dense:
+  index_type: hnsw          # hnsw | ivfpq (ivfpq for the memory-constrained deploy)
+  hnsw:
+    m: 32
+    ef_construction: 200
+    ef_search: 64           # tuned against the ablation set
+    # sq8 = 8-bit scalar quantization: 850k x 384 goes 1.3 GB -> ~326 MB, which is
+    # what makes the index fit a free-tier container. Use `flat` for an exact
+    # fp32 baseline when measuring the recall cost of quantization.
+    quantizer: sq8          # sq8 | flat
+  ivfpq:
+    nlist: 4096
+    m: 48
+    nbits: 8
+    nprobe: 16
+  normalize: true           # cosine via inner product on L2-normalized vectors
+
+sparse:
+  enabled: true
+  k1: 1.2
+  b: 0.75
+  method: lucene
+
+retrieval:
+  top_k_per_view: 30
+  top_k_fused: 40
+  top_k_final: 8
+  fusion:
+    method: rrf
+    rrf_k: 60
+    # Per-view weights. Defaults are uniform; the ablation replaces these with
+    # measured values. Kept in config so the tuned numbers are auditable.
+    view_weights:
+      atomic: 1.0
+      sentence_window: 1.0
+      fixed_overlap: 1.0
+      semantic: 1.0
+      proposition: 1.0
+    dense_weight: 1.0
+    sparse_weight: 0.8
+  dedup:
+    enabled: true
+    span_iou_threshold: 0.6   # collapse near-duplicate spans across views
+    max_per_doc: 2            # stop one verbose passage occupying every context slot
+  language_filter:
+    # Restrict to the detected language only when ASR is confident; otherwise
+    # search everything rather than filtering on a bad guess.
+    min_asr_confidence: 0.75
+    always_include_english: true
+
+rerank:
+  enabled: true
+  # Multilingual, and trained on mMARCO -- i.e. multilingual MS MARCO, the exact
+  # distribution this corpus is drawn from. The 6-layer variant is the latency/
+  # quality point that fits the budget; cross-encoder/mmarco-mMiniLMv2-L12-H384-v1
+  # is the stronger reference the ablation compares against.
+  # (An English-only ms-marco-MiniLM would be actively wrong here: the corpus is
+  # majority Devanagari, Tamil and Bengali.)
+  model_id: nreimers/mmarco-mMiniLMv2-L6-H384-v1
+  quantize_int8: true
+  # Sized to actually FIT. At top_n=8 / seq=192 the measured p90 was 196ms, so the
+  # budget manager skipped it on every single request -- a stage that never runs is
+  # not a feature, it is dead weight. 4 pairs at 128 tokens is ~3x less work and
+  # lands inside the budget; the ablation reports what that costs in nDCG.
+  top_n: 4
+  max_seq_len: 128
+  intra_op_threads: 4
+
+generation:
+  mode: extractive            # extractive | llm | extractive_then_llm
+  extractive:
+    max_sentences: 3
+    min_answer_chars: 8
+    max_answer_chars: 600
+    lead_context_sentences: 1
+  llm:
+    # Haiku 4.5 deliberately, not a larger model: this path is optional polish
+    # streamed AFTER the grounded extractive answer has already been shown, so
+    # time-to-first-token matters far more than raw capability. Use the alias,
+    # never a date-suffixed id.
+    model: claude-haiku-4-5
+    max_tokens: 400
+    temperature: 0.0
+    max_tool_rounds: 2
+    hard_timeout_ms: 3000
+
+# --- The <200ms contract ---
+# The budget manager enforces this. Optional stages are SKIPPED when the
+# remaining budget is smaller than that stage's rolling p90, and every skip is
+# reported in the response envelope as a `degradation`.
+budget:
+  core_budget_ms: 200
+  safety_margin_ms: 15
+  stages:
+    embed_query:      { required: true,  soft_ms: 20 }
+    dense_search:     { required: true,  soft_ms: 25 }
+    sparse_search:    { required: false, soft_ms: 20 }
+    fuse:             { required: true,  soft_ms: 5 }
+    rerank:           { required: false, soft_ms: 70 }
+    domain_guard:     { required: true,  soft_ms: 5 }
+    # Lexical sentence selection only -- cheap and always runs.
+    generate:         { required: true,  soft_ms: 5 }
+    # The embedding pass that refines it. Measured at 65-127ms before tuning,
+    # which is why it is a separate, droppable stage rather than part of `generate`.
+    generate_semantic: { required: false, soft_ms: 45 }
+    grounding_guard:  { required: false, soft_ms: 20 }
+
+guardrails:
+  input:
+    min_chars: 3
+    max_chars: 500
+    min_asr_confidence: 0.45      # below this -> LOW_CONFIDENCE_ASR
+    block_unsafe: true
+    block_injection: true
+    redact_pii: true
+  domain:
+    # Calibrated by bench/calibrate_thresholds.py, not guessed.
+    min_top1_score: 0.72          # cosine similarity of best chunk
+    max_centroid_distance: 0.62   # query distance from corpus manifold
+    min_supporting_chunks: 1
+  grounding:
+    mode: lexical_embedding       # lexical_embedding | nli
+    min_lexical_overlap: 0.35
+    min_embedding_similarity: 0.70
+    require_citation: true
+  conflict:
+    enabled: true
+    min_disagreement: 0.45
+    # Only fires between NEAR-DUPLICATE passages from DIFFERENT documents. Two
+    # documents on the same subject routinely mention different numbers without
+    # contradicting anything, and two chunks of the SAME passage differ by
+    # construction (a window is often a prefix of its neighbour). Both cases
+    # produced false refusals before these constraints were added.
+    min_topical_overlap: 0.55
+
+server:
+  host: 0.0.0.0
+  port: 7860                      # HF Spaces default
+  cors_origins: ["*"]
+  max_audio_bytes: 10485760       # 10 MB
+  warm_on_boot: true
+
+stt:
+  provider: sarvam                # sarvam | elevenlabs
+  sarvam:
+    endpoint: https://api.sarvam.ai/speech-to-text
+    model: saaras:v4
+    mode: transcribe
+    language_code: unknown        # auto-detect; overridden by UI hint
+    timeout_s: 8
+    max_retries: 3
+    backoff_base_s: 0.25
+    circuit_breaker_failures: 5
+    circuit_breaker_reset_s: 30
+  elevenlabs:
+    endpoint: https://api.elevenlabs.io/v1/speech-to-text
+    model_id: scribe_v2
+    timeout_s: 8
+    max_retries: 3
+
+bench:
+  latency:
+    n_queries: 500
+    n_audio_clips: 50
+    warmup: 25
+    percentiles: [50, 70, 90, 95, 99, 100]
+  retrieval:
+    n_eval_queries: 2000
+    k_values: [1, 5, 20]

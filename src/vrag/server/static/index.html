@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>वाणी-RAG · Voice RAG</title>
+<link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">◉</span>
+    <div>
+      <h1>वाणी-RAG</h1>
+      <p class="sub">Voice → grounded answer over MSMARCO-XI · hi · ta · bn · en</p>
+    </div>
+  </div>
+  <div class="health" id="health">
+    <span class="dot" id="health-dot"></span><span id="health-text">connecting…</span>
+  </div>
+</header>
+
+<main>
+  <!-- ── Ask ─────────────────────────────────────────────────────── -->
+  <section class="panel ask">
+    <div class="mic-row">
+      <button id="mic" class="mic" aria-label="Hold to speak">
+        <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
+          <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3z"/>
+          <path d="M18 11a6 6 0 0 1-12 0M12 17v4M8 21h8" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <div class="mic-meta">
+        <div class="mic-label" id="mic-label">Hold to speak</div>
+        <canvas id="wave" width="480" height="40" aria-hidden="true"></canvas>
+      </div>
+      <select id="lang" aria-label="Language hint">
+        <option value="auto">Auto-detect</option>
+        <option value="hi">हिन्दी</option>
+        <option value="ta">தமிழ்</option>
+        <option value="bn">বাংলা</option>
+        <option value="en">English</option>
+      </select>
+    </div>
+
+    <div class="text-row">
+      <input id="q" type="text" placeholder="…or type a question and press Enter"
+             autocomplete="off" spellcheck="false" />
+      <button id="send" class="send">Ask</button>
+    </div>
+
+    <div class="samples" id="samples"></div>
+  </section>
+
+  <!-- ── Answer ──────────────────────────────────────────────────── -->
+  <section class="panel answer" id="answer-panel" hidden>
+    <div class="transcript-row" id="transcript-row" hidden>
+      <span class="tag">heard</span>
+      <span id="transcript"></span>
+      <span class="asr" id="asr-conf"></span>
+    </div>
+
+    <div id="verdict" class="verdict" hidden></div>
+    <div id="answer" class="answer-text"></div>
+
+    <div class="meta-row">
+      <span class="chip" id="strategy-chip" hidden></span>
+      <span class="chip" id="lang-chip" hidden></span>
+      <span class="chip" id="conf-chip" hidden></span>
+    </div>
+
+    <details class="citations" id="citations" hidden>
+      <summary><span id="cite-count">0</span> supporting passages</summary>
+      <div id="cite-list"></div>
+    </details>
+  </section>
+
+  <!-- ── Latency HUD ─────────────────────────────────────────────── -->
+  <section class="panel hud" id="hud-panel" hidden>
+    <div class="hud-head">
+      <h2>Latency</h2>
+      <div class="hud-total">
+        <span class="hud-core" id="core-ms">–</span>
+        <span class="hud-budget" id="budget-verdict"></span>
+      </div>
+    </div>
+    <div class="bars" id="bars"></div>
+    <div class="degradations" id="degradations"></div>
+    <p class="hud-note" id="hud-note"></p>
+  </section>
+</main>
+
+<footer>
+  <span>RAG core budget <strong id="budget-ms">200</strong> ms · enforced, not asserted</span>
+  <a href="/docs" target="_blank" rel="noopener">API</a>
+  <a href="/api/metrics" target="_blank" rel="noopener">metrics</a>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

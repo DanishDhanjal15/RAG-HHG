@@ -1,0 +1,75 @@
+[project]
+name = "vrag"
+version = "0.1.0"
+description = "Voice-enabled multilingual RAG over ai4bharat/MSMARCO-XI with a sub-200ms retrieval core"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+
+dependencies = [
+    # --- core numerics ---
+    "numpy>=1.26,<2.0",
+    "scipy>=1.11",
+    "pyarrow>=16.0",
+    "pandas>=2.1",
+
+    # --- retrieval ---
+    "faiss-cpu>=1.8.0",
+    "bm25s>=0.2.0",
+    "PyStemmer>=2.2.0",
+
+    # --- embedding / inference (CPU, ONNX int8 on the hot path) ---
+    "onnxruntime>=1.18",
+    "optimum[onnxruntime]>=1.20",
+    "transformers>=4.40,<5.0",
+    "torch>=2.2",                  # export-time only, never on the hot path
+    "tokenizers>=0.19",
+    "huggingface-hub>=0.23",
+
+    # --- serving ---
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+    "python-multipart>=0.0.9",
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "pyyaml>=6.0",
+
+    # --- generation (optional polish path) ---
+    "anthropic>=0.34",
+
+    # --- ops ---
+    "orjson>=3.10",
+    "rich>=13.7",
+    "typer>=0.12",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "matplotlib>=3.8",
+    "ruff>=0.5",
+]
+
+[project.scripts]
+vrag = "vrag.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vrag"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

@@ -1,0 +1,28 @@
+# Dev profile -- a small index that builds in minutes instead of hours.
+#
+# Purpose: validate the whole pipeline end to end (retrieval, fusion, reranking,
+# harness, guardrails, server, UI) before committing to a full-corpus embed. On a
+# CPU-only box the full build is measured in hours, so debugging against it is a
+# terrible feedback loop and a typo costs a night.
+#
+# Everything not listed here is inherited from default.yaml at load time, so the
+# dev and production runs differ ONLY in corpus size -- no behavioural drift.
+#
+# Usage:  VRAG_CONFIG=configs/dev.yaml vrag build
+#         VRAG_CONFIG=configs/dev.yaml python bench/run_retrieval_eval.py --n 300
+
+paths:
+  index_dir: data/index-dev
+  trace_dir: traces/dev
+
+corpus:
+  # Subsampled BY QUERY, not by passage -- see index/build.py:subsample_by_query.
+  # ~200 queries -> ~3k passages -> ~15k chunks -> ~12 min to build.
+  max_queries: 200
+
+bench:
+  retrieval:
+    n_eval_queries: 150
+  latency:
+    n_queries: 200
+    warmup: 20

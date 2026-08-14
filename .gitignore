@@ -1,0 +1,22 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets
+.env
+.env.local
+
+# Data + build artifacts (regenerate with `vrag ingest` / `vrag build`)
+data/
+models/
+*.faiss
+*.onnx
+traces/*.sqlite
+traces/*.parquet
+
+# OS
+Thumbs.db
+.DS_Store
