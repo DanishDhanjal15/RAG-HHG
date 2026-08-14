@@ -19,6 +19,7 @@ from vrag.harness.resilience import (
     CircuitBreaker,
     PermanentError,
     RetryPolicy,
+    StageTimeout,
     SttUnavailable,
     TransientError,
     call_with_resilience,
@@ -299,7 +300,7 @@ class TestCallWithResilience:
             await asyncio.sleep(5)
             return "value"
 
-        with pytest.raises(Exception):
+        with pytest.raises(StageTimeout):
             await call_with_resilience(
                 slow, policy=RetryPolicy(max_attempts=1), timeout_s=0.05
             )

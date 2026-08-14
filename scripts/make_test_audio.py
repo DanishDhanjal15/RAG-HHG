@@ -23,7 +23,6 @@ import base64
 import json
 import random
 import time
-from pathlib import Path
 
 import httpx
 from rich.console import Console

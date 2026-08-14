@@ -233,7 +233,8 @@ def main() -> None:
 
     if fp_by_guard:
         guard_table = Table(title="Which guard produced each over-refusal")
-        guard_table.add_column("guard"); guard_table.add_column("n", justify="right")
+        guard_table.add_column("guard")
+        guard_table.add_column("n", justify="right")
         for reason, n in sorted(fp_by_guard.items(), key=lambda kv: -kv[1]):
             note = ("corpus coverage, not a safety failure"
                     if reason == "OUT_OF_DOMAIN" else "genuine false positive")
@@ -272,7 +273,9 @@ def main() -> None:
     mis = [o for o in outcomes if o.correct_decision and not o.correct_reason]
     if mis:
         mtable = Table(title=f"{len(mis)} refused for the wrong reason")
-        mtable.add_column("query"); mtable.add_column("expected"); mtable.add_column("got")
+        mtable.add_column("query")
+        mtable.add_column("expected")
+        mtable.add_column("got")
         for o in mis:
             mtable.add_row(o.case.text[:44] or "<empty>", o.case.expect or "-", o.reason or "-")
         console.print(mtable)

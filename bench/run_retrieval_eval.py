@@ -322,7 +322,8 @@ def main() -> None:
     console.print(table)
 
     verdict = Table(title="Verdict")
-    verdict.add_column("question"); verdict.add_column("answer")
+    verdict.add_column("question")
+    verdict.add_column("answer")
     verdict.add_row("best single view", f"{best_single[0]}  (nDCG@10 {best_single[1]:.3f})")
     verdict.add_row("best fused config", f"{best_fused}  (nDCG@10 {results[best_fused].ndcg10:.3f})")
     verdict.add_row(

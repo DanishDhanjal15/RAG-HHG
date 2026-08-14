@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-from vrag.chunking.base import split_sentences
 from vrag.chunking.atomic import AtomicChunker
+from vrag.chunking.base import split_sentences
 from vrag.chunking.fixed_overlap import FixedOverlapChunker
 from vrag.chunking.sentence_window import SentenceWindowChunker
 from vrag.config import FixedOverlapCfg, SentenceWindowCfg
@@ -83,7 +83,7 @@ class TestSplitSentences:
     def test_offsets_are_monotonic_and_non_overlapping(self):
         text = "One. Two. Three. Four."
         sentences = split_sentences(text)
-        for a, b in zip(sentences, sentences[1:]):  # pairwise: intentionally not strict
+        for a, b in zip(sentences, sentences[1:], strict=False):  # pairwise
             assert a.end <= b.start
 
     def test_devanagari_conjuncts_survive(self):
@@ -184,7 +184,7 @@ class TestFixedOverlapChunker:
         chunks = chunker.chunk(passage)
         assert len(chunks) > 1
         # Consecutive chunks must overlap -- that is the whole point of the view.
-        for a, b in zip(chunks, chunks[1:]):  # pairwise: intentionally not strict
+        for a, b in zip(chunks, chunks[1:], strict=False):  # pairwise
             assert b.char_start < a.char_end
 
     def test_chunks_cover_the_passage(self, tokenizer):

@@ -203,7 +203,8 @@ def main() -> None:
 
     # -- distributions ------------------------------------------------------ #
     dist_table = Table(title="Signal distributions")
-    dist_table.add_column("signal"); dist_table.add_column("population")
+    dist_table.add_column("signal")
+    dist_table.add_column("population")
     for col in ("n", "p05", "p25", "p50", "p75", "p95"):
         dist_table.add_column(col, justify="right")
 
@@ -226,7 +227,8 @@ def main() -> None:
 
     # -- how much does each signal actually discriminate? -------------------- #
     disc = Table(title="Discriminative power (AUC; 0.50 = useless)")
-    disc.add_column("signal"); disc.add_column("vs unanswerable", justify="right")
+    disc.add_column("signal")
+    disc.add_column("vs unanswerable", justify="right")
     disc.add_column("vs off-topic", justify="right")
     aucs = {
         "top1 cosine": (
@@ -277,7 +279,8 @@ def main() -> None:
     )
 
     rec = Table(title="Recommended operating point")
-    rec.add_column("setting"); rec.add_column("value", justify="right")
+    rec.add_column("setting")
+    rec.add_column("value", justify="right")
     rec.add_row("guardrails.domain.min_top1_score", f"{best['min_top1']:.3f}")
     rec.add_row(
         "guardrails.domain.use_centroid",

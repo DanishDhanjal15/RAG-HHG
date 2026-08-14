@@ -70,6 +70,12 @@ target-version = "py311"
 select = ["E", "F", "I", "UP", "B"]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+# FastAPI's dependency-injection defaults (`File(...)`, `Form(...)`, `Depends(...)`)
+# are function calls in argument defaults by design -- that IS the framework's
+# API, and rewriting them to satisfy B008 would break the routes.
+"src/vrag/server/app.py" = ["B008"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

@@ -290,11 +290,11 @@ def _write_report(cfg, out_rel, collector, ps, measured, budget, boot_s,  # noqa
         "",
         "## The <200 ms contract",
         "",
-        f"The RAG core is **embed -> retrieve -> fuse -> rerank -> guard -> answer**,",
+        "The RAG core is **embed -> retrieve -> fuse -> rerank -> guard -> answer**,",
         f"budgeted at {budget:.0f} ms and enforced by `harness/budget.py`, which skips",
         "optional stages when their measured p90 will not fit in the remaining time.",
         "",
-        f"| | P50 | P70 | P100 | verdict |",
+        "| | P50 | P70 | P100 | verdict |",
         "|---|---|---|---|---|",
         f"| **RAG core** | {core['p50']:.1f} ms | {core['p70']:.1f} ms | {core['p100']:.1f} ms | "
         + ("**within budget**" if core["p100"] <= budget else "**OVER BUDGET**")
