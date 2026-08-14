@@ -7,7 +7,7 @@ sdk: docker
 app_port: 7860
 pinned: false
 license: mit
-short_description: Voice-in, grounded-answer-out RAG over MSMARCO-XI, sub-200ms core
+short_description: Voice RAG over MSMARCO-XI, sub-200ms core
 ---
 
 # वाणी-RAG · Voice-Enabled Multilingual RAG
