@@ -269,6 +269,18 @@ stt:
     timeout_s: 8
     max_retries: 3
 
+# Where to fetch a prebuilt index when none exists locally. The index is ~170 MB
+# of vectors and payload -- too large for a git repo, and far too slow to build
+# inside a Docker image (hours on CPU). So it is published once to an HF dataset
+# repo and downloaded on first boot.
+#
+# Leave repo_id empty for local development: nothing here runs and the app expects
+# an index you built yourself with `vrag build`.
+remote_index:
+  repo_id: ""            # e.g. "your-username/vrag-index"
+  revision: main
+  fetch_on_boot: true
+
 bench:
   latency:
     n_queries: 500

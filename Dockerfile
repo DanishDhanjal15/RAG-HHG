@@ -58,14 +58,21 @@ RUN pip install --no-cache-dir \
 COPY --chown=app:app configs ./configs
 COPY --from=exporter --chown=app:app /models ./models
 
-# The prebuilt index. Kept as the LAST copy so that iterating on code does not
-# invalidate the cache layer holding several hundred MB of vectors.
-COPY --chown=app:app data/index ./data/index
+# The index is NOT baked into the image. It is ~170 MB of vectors and payload with
+# its own lifecycle, so it lives in a Hugging Face dataset repo and is fetched on
+# first boot (see vrag/index/fetch.py). That keeps the image small, keeps a code
+# push from re-uploading the index, and keeps deploys from taking hours.
+#
+#   Hosted:  set remote_index.repo_id in configs/default.yaml (or VRAG_ config)
+#   Local:   docker run -v "$(pwd)/data/index:/app/data/index:ro" ...
+RUN mkdir -p /app/data/index /app/traces && chown -R app:app /app/data /app/traces
 
 USER app
 EXPOSE 7860
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=3 \
+# start-period is generous on purpose: a cold Space downloads the index (~170 MB)
+# and then warms ONNX and the budget manager before it will answer.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=300s --retries=3 \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:7860/api/health',timeout=4).status==200 else 1)"
 
 CMD ["uvicorn", "vrag.server.app:app", "--host", "0.0.0.0", "--port", "7860"]

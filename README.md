@@ -194,13 +194,18 @@ Architecture and the reasoning behind each choice:
 
 ```bash
 docker build -t vrag .
-docker run -p 7860:7860 -e VRAG_SARVAM_API_KEY=... vrag
+docker run -p 7860:7860 -e VRAG_SARVAM_API_KEY=... \
+  -v "$(pwd)/data/index:/app/data/index:ro" vrag
 ```
 
 Two-stage build: torch and the ONNX exporter live in the build stage only and
-never reach the runtime image. The index is built beforehand and copied in —
-building it inside the image would make every deploy a multi-hour job. For
-Hugging Face Spaces, `deploy/README.space.md` carries the required frontmatter.
+never reach the runtime image. The **index is not baked in** — it is ~170 MB with
+its own lifecycle, so it is published to a Hugging Face dataset repo
+(`scripts/publish_index.py`) and fetched on first boot. Building it inside the
+image would make every deploy a multi-hour job.
+
+Full walkthrough, including how to verify a deployment rather than assume it:
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ---
 

@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 from vrag.config import get_config, get_secrets
 from vrag.harness.budget import GLOBAL_REGISTRY
 from vrag.harness.pipeline import Pipeline
+from vrag.index.fetch import ensure_index
 from vrag.schemas import AnswerEnvelope, AudioInput
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -56,6 +57,14 @@ async def lifespan(app: FastAPI):  # noqa: ANN201
     cfg = get_config()
     app.state.cfg = cfg
     app.state.boot_started = time.perf_counter()
+
+    # Fetch a prebuilt index if one is configured and not already on disk. Runs
+    # before Pipeline() because Pipeline needs the index to exist. On a Space this
+    # is the difference between a 3-minute first boot and a failed one; on repeat
+    # boots the index is already there and this is a no-op.
+    if cfg.remote_index.repo_id and cfg.remote_index.fetch_on_boot:
+        ensure_index(cfg)
+
     app.state.pipeline = Pipeline(cfg)
     app.state.boot_seconds = round(time.perf_counter() - app.state.boot_started, 2)
 

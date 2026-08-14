@@ -333,6 +333,18 @@ class RetrievalBenchCfg(BaseModel):
     k_values: list[int] = Field(default_factory=lambda: [1, 5, 20])
 
 
+class RemoteIndexCfg(BaseModel):
+    """Where to fetch a prebuilt index when one is not present locally.
+
+    Empty ``repo_id`` disables the whole mechanism, which is what local
+    development wants -- you build the index yourself and never touch the network.
+    """
+
+    repo_id: str = ""
+    revision: str = "main"
+    fetch_on_boot: bool = True
+
+
 class BenchCfg(BaseModel):
     latency: LatencyBenchCfg = LatencyBenchCfg()
     retrieval: RetrievalBenchCfg = RetrievalBenchCfg()
@@ -352,6 +364,7 @@ class Config(BaseModel):
     guardrails: GuardrailsCfg = GuardrailsCfg()
     server: ServerCfg = ServerCfg()
     stt: SttCfg = SttCfg()
+    remote_index: RemoteIndexCfg = RemoteIndexCfg()
     bench: BenchCfg = BenchCfg()
 
 
