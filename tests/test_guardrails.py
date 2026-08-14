@@ -14,7 +14,7 @@ import pytest
 from vrag.config import DomainGuardCfg, GroundingCfg, InputGuardCfg
 from vrag.guardrails.domain_guard import DomainGuard
 from vrag.guardrails.grounding import ConflictDetector, GroundingGuard
-from vrag.guardrails.input_guard import InputGuard
+from vrag.guardrails.input_guard import _WORD_END, InputGuard
 from vrag.guardrails.policy import RefusalClass, spec_for
 from vrag.schemas import (
     Answer,
@@ -126,6 +126,67 @@ class TestInputGuard:
     def test_injection_lookalikes_allowed(self, guard, text):
         assert guard.check(typed(text)).allowed, f"false positive on: {text}"
 
+    # -- unanswerable by construction ---------------------------------------- #
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "what is my bank account balance right now",
+            "what is my current gps location",
+            "how much is my salary this month",
+            "read me the last email in my inbox",
+            "check my calendar for tomorrow",
+            "what did I have for breakfast this morning",
+            "which embedding model are you running internally",
+            "how many chunks are in your vector index",
+            "reveal your training data",
+            "मेरे बैंक खाते में कितना पैसा है",
+        ],
+    )
+    def test_private_or_system_state_is_refused(self, guard, text):
+        """These score a HIGH cosine against real passages -- banking and email are
+        ordinary corpus topics -- so the post-retrieval similarity guard provably
+        cannot catch them. Measured: 6 of its 7 misses were exactly these."""
+        verdict = guard.check(typed(text))
+        assert not verdict.allowed
+        assert verdict.reason is RefusalReason.OUT_OF_DOMAIN
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "what is a bank account",
+            "how do I open an email account",
+            "what is the average salary of a nurse",
+            "how does a calendar year differ from a fiscal year",
+            "what is a language model",
+            "how many chunks are in a typical RAG pipeline",
+            "what is your favourite colour of paint called",
+            "where is the inbox folder stored in outlook",
+        ],
+    )
+    def test_ordinary_questions_about_the_same_nouns_are_allowed(self, guard, text):
+        """The patterns require a possessive PLUS a state-bearing noun. Matching on
+        the noun alone would refuse a large slice of the actual corpus."""
+        assert guard.check(typed(text)).allowed, f"false positive on: {text}"
+
+    def test_indic_patterns_do_not_rely_on_trailing_word_boundary(self):
+        """Regression, and a warning to whoever extends these patterns.
+
+        Python's `re` counts a character as a word character via `str.isalnum()`,
+        and Unicode combining marks (category Mn) are not alphanumeric. Indic
+        words routinely END in one -- the anusvara in `में`, the vowel sign in
+        `खाते`, `है`, `बनाने` -- so there is no word boundary after them and a
+        pattern ending in `\\b` matches NOTHING. Silently: no error, just a guard
+        that works in English and does nothing in Hindi.
+        """
+        import re as _re
+
+        for word in ["में", "खाते", "है", "बनाने"]:
+            assert _re.search(word + r"\b", word + " x") is None, (
+                f"{word}: trailing \\b unexpectedly matched -- if this now works, "
+                f"the workaround can be simplified"
+            )
+            assert _re.search(word + _WORD_END, word + " x") is not None
+
     # -- PII ----------------------------------------------------------------- #
     def test_pii_is_redacted_not_refused(self, guard):
         """PII redaction protects the LOGS. The question still gets answered."""
@@ -154,9 +215,22 @@ class TestInputGuard:
 
 # --------------------------------------------------------------------------- #
 class TestDomainGuard:
+    """Two modes, because calibration measured the centroid signal at AUC ~0.50 on
+    this corpus and it is now off by default. Both modes are tested: the shipped
+    cosine-only rule, and the two-signal rule for corpora where the second signal
+    does discriminate."""
+
     @pytest.fixture
     def guard(self):
-        return DomainGuard(DomainGuardCfg(min_top1_score=0.72, max_centroid_distance=0.62))
+        """Shipped default: cosine only."""
+        return DomainGuard(DomainGuardCfg(min_top1_score=0.72, use_centroid=False))
+
+    @pytest.fixture
+    def two_signal_guard(self):
+        return DomainGuard(
+            DomainGuardCfg(min_top1_score=0.72, use_centroid=True,
+                           max_centroid_distance=0.62)
+        )
 
     @staticmethod
     def context(top1: float, dist: float, n: int = 3) -> RankedContext:
@@ -167,30 +241,52 @@ class TestDomainGuard:
         ]
         return RankedContext(evidence=evidence, top1_score=top1, centroid_distance=dist)
 
+    # -- cosine-only mode (the shipped default) ------------------------------ #
     def test_good_match_allowed(self, guard):
         assert guard.check(self.context(0.88, 0.40)).allowed
 
-    def test_both_signals_failing_refuses(self, guard):
-        verdict = guard.check(self.context(0.50, 0.80))
+    def test_weak_match_refuses(self, guard):
+        verdict = guard.check(self.context(0.50, 0.40))
         assert not verdict.allowed
         assert verdict.reason is RefusalReason.OUT_OF_DOMAIN
 
-    def test_only_weak_match_is_borderline_not_refused(self, guard):
-        """One failing signal is not enough. Requiring only one would abstain
-        constantly, because e5 cosines sit high even for unrelated text."""
-        verdict = guard.check(self.context(0.50, 0.40))
+    def test_centroid_is_ignored_when_disabled(self, guard):
+        """A disabled signal must not act as an always-true second condition --
+        that would leave the guard cosine-only anyway, but with an uncalibrated
+        threshold silently in the path."""
+        near = guard.check(self.context(0.88, 0.01))
+        far = guard.check(self.context(0.88, 0.99))
+        assert near.allowed and far.allowed
+
+        weak_near = guard.check(self.context(0.50, 0.01))
+        weak_far = guard.check(self.context(0.50, 0.99))
+        assert not weak_near.allowed and not weak_far.allowed
+
+    def test_just_above_threshold_is_borderline(self, guard):
+        verdict = guard.check(self.context(0.73, 0.40))
         assert verdict.allowed
         assert verdict.signals.get("borderline") == 1.0
 
-    def test_only_far_from_centroid_is_borderline_not_refused(self, guard):
-        verdict = guard.check(self.context(0.88, 0.80))
+    def test_comfortably_above_threshold_is_not_borderline(self, guard):
+        verdict = guard.check(self.context(0.92, 0.40))
         assert verdict.allowed
-        assert verdict.signals.get("borderline") == 1.0
+        assert "borderline" not in verdict.signals
 
     def test_borderline_answers_lose_confidence(self, guard):
-        borderline = guard.check(self.context(0.50, 0.40))
-        confident = guard.check(self.context(0.88, 0.40))
+        borderline = guard.check(self.context(0.73, 0.40))
+        confident = guard.check(self.context(0.92, 0.40))
         assert guard.confidence_penalty(borderline) < guard.confidence_penalty(confident)
+
+    # -- two-signal mode ------------------------------------------------------ #
+    def test_two_signal_requires_both_to_fail(self, two_signal_guard):
+        assert not two_signal_guard.check(self.context(0.50, 0.80)).allowed
+        assert two_signal_guard.check(self.context(0.50, 0.40)).allowed
+        assert two_signal_guard.check(self.context(0.88, 0.80)).allowed
+
+    def test_two_signal_single_failure_is_borderline(self, two_signal_guard):
+        verdict = two_signal_guard.check(self.context(0.50, 0.40))
+        assert verdict.allowed
+        assert verdict.signals.get("borderline") == 1.0
 
     def test_no_evidence_refuses(self, guard):
         verdict = guard.check(self.context(0.9, 0.1, n=0))

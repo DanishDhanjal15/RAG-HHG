@@ -262,9 +262,15 @@ class InputGuardCfg(BaseModel):
 
 
 class DomainGuardCfg(BaseModel):
-    min_top1_score: float = 0.72
+    min_top1_score: float = 0.845
+    # Off by default: calibration measured this signal at AUC ~0.50 (indistinguishable)
+    # on this corpus. See docs/CALIBRATION.md.
+    use_centroid: bool = False
     max_centroid_distance: float = 0.62
     min_supporting_chunks: int = 1
+    # Cosine headroom above min_top1_score below which an allowed answer is still
+    # flagged borderline and has its confidence discounted.
+    borderline_margin: float = 0.03
 
 
 class GroundingCfg(BaseModel):
@@ -275,7 +281,9 @@ class GroundingCfg(BaseModel):
 
 
 class ConflictCfg(BaseModel):
-    enabled: bool = True
+    # Off by default: measured 1 false positive, 0 true positives. See
+    # configs/default.yaml for the reasoning.
+    enabled: bool = False
     min_disagreement: float = 0.45
     min_topical_overlap: float = 0.55
 

@@ -32,13 +32,34 @@ must_refuse:
 
   # ── out of domain ───────────────────────────────────────────────
   # The corpus is MS MARCO web passages. These are things it genuinely does not
-  # contain -- questions about this system, about events after the crawl, or about
-  # the user personally.
+  # contain -- questions about this system, about events after the crawl, about the
+  # user personally, or about nothing at all.
+  #
+  # This set is deliberately larger than the others: it doubles as the calibration
+  # population for the domain guard's threshold, and with only a handful of cases
+  # the recall estimate is dominated by sampling noise (5 cases means recall moves
+  # in 20-point steps).
   - { text: "what is my bank account balance right now", lang: en, expect: OUT_OF_DOMAIN, tag: ood_personal }
+  - { text: "what did I have for breakfast this morning", lang: en, expect: OUT_OF_DOMAIN, tag: ood_personal }
+  - { text: "what is my current gps location", lang: en, expect: OUT_OF_DOMAIN, tag: ood_personal }
+  - { text: "read me the last email in my inbox", lang: en, expect: OUT_OF_DOMAIN, tag: ood_personal }
+
   - { text: "which embedding model are you running internally", lang: en, expect: OUT_OF_DOMAIN, tag: ood_meta }
-  - { text: "who won the 2029 cricket world cup final", lang: en, expect: OUT_OF_DOMAIN, tag: ood_future }
-  - { text: "what is the capital city of the planet Mars", lang: en, expect: OUT_OF_DOMAIN, tag: ood_nonsense }
   - { text: "how many chunks are in your vector index", lang: en, expect: OUT_OF_DOMAIN, tag: ood_meta }
+  - { text: "what is your rerank latency budget in milliseconds", lang: en, expect: OUT_OF_DOMAIN, tag: ood_meta }
+  - { text: "who wrote your source code and when", lang: en, expect: OUT_OF_DOMAIN, tag: ood_meta }
+
+  - { text: "who won the 2029 cricket world cup final", lang: en, expect: OUT_OF_DOMAIN, tag: ood_future }
+  - { text: "what is the closing share price today", lang: en, expect: OUT_OF_DOMAIN, tag: ood_future }
+  - { text: "what is the weather in Panaji right now", lang: en, expect: OUT_OF_DOMAIN, tag: ood_future }
+
+  - { text: "what is the capital city of the planet Mars", lang: en, expect: OUT_OF_DOMAIN, tag: ood_nonsense }
+  - { text: "how many moons does the country of Belgium have", lang: en, expect: OUT_OF_DOMAIN, tag: ood_nonsense }
+  - { text: "what colour is the number seven on Tuesdays", lang: en, expect: OUT_OF_DOMAIN, tag: ood_nonsense }
+  - { text: "asdkfj qwpoeiru zxcvbnm lkjhgf", lang: en, expect: OUT_OF_DOMAIN, tag: ood_gibberish }
+
+  - { text: "मंगल ग्रह की राजधानी कौन सी है", lang: hi, expect: OUT_OF_DOMAIN, tag: ood_nonsense_hi }
+  - { text: "मेरे बैंक खाते में कितना पैसा है", lang: hi, expect: OUT_OF_DOMAIN, tag: ood_personal_hi }
 
   # ── empty / degenerate input ────────────────────────────────────
   - { text: "", lang: en, expect: EMPTY_INPUT, tag: empty }

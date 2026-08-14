@@ -55,7 +55,14 @@ class DomainGuard:
             )
 
         weak_match = context.top1_score < self.cfg.min_top1_score
-        far_from_corpus = context.centroid_distance > self.cfg.max_centroid_distance
+        # When the centroid signal is disabled it must not act as a second
+        # condition -- an always-true conjunct would silently make the guard
+        # cosine-only anyway, but with a threshold nobody calibrated.
+        far_from_corpus = (
+            context.centroid_distance > self.cfg.max_centroid_distance
+            if self.cfg.use_centroid
+            else True
+        )
 
         if weak_match and far_from_corpus:
             return GuardVerdict(
@@ -68,11 +75,20 @@ class DomainGuard:
                 signals=signals,
             )
 
-        # One signal failing is not enough to refuse, but it is enough to say so.
-        # The confidence penalty propagates into the answer envelope, so a
-        # borderline answer is visibly borderline rather than silently returned
-        # with full confidence.
-        if weak_match or far_from_corpus:
+        # Allowed, but flag the ones that only just cleared the bar. The penalty
+        # propagates into the answer envelope, so a marginal answer is visibly
+        # marginal rather than silently returned with full confidence.
+        #
+        # What counts as marginal depends on how many signals are live. With the
+        # centroid signal disabled there is no "one of two failed" case, so
+        # "borderline" means the cosine is only just above the threshold.
+        if self.cfg.use_centroid:
+            borderline = weak_match or far_from_corpus
+        else:
+            headroom = context.top1_score - self.cfg.min_top1_score
+            borderline = headroom < self.cfg.borderline_margin
+
+        if borderline:
             signals["borderline"] = 1.0
 
         return GuardVerdict(allowed=True, signals=signals)

@@ -220,17 +220,48 @@ guardrails:
     block_injection: true
     redact_pii: true
   domain:
-    # Calibrated by bench/calibrate_thresholds.py, not guessed.
-    min_top1_score: 0.72          # cosine similarity of best chunk
-    max_centroid_distance: 0.62   # query distance from corpus manifold
+    # Calibrated by bench/calibrate_thresholds.py, not guessed. With e5, even
+    # clearly unrelated text scores ~0.80-0.86 cosine on this corpus, so intuition
+    # is useless here -- the original hand-picked 0.72 refused literally nothing.
+    #
+    # !! This value is calibrated against the DEV index. Corpus size shifts the
+    # whole cosine distribution (a larger corpus means a likelier near-duplicate
+    # and higher in-domain scores), so RE-RUN calibration after a production build:
+    #     python bench/calibrate_thresholds.py --n 400
+    min_top1_score: 0.845         # cosine similarity of best chunk
     min_supporting_chunks: 1
+    # Distance-from-corpus-centroid was the design's second signal. Calibration
+    # measured it at AUC ~0.50 -- in-domain and out-of-domain queries sit at the
+    # same distance, because every query is a web-search question drawn from the
+    # same distribution. It measures "does this look like an MS MARCO question",
+    # to which the answer is always yes.
+    #
+    # Requiring a second condition that is always true is decoration, not safety,
+    # so it is off. See docs/CALIBRATION.md.
+    use_centroid: false
+    max_centroid_distance: 0.62
   grounding:
     mode: lexical_embedding       # lexical_embedding | nli
     min_lexical_overlap: 0.35
     min_embedding_similarity: 0.70
     require_citation: true
   conflict:
-    enabled: true
+    # OFF by default, on evidence rather than principle.
+    #
+    # Across the full adversarial suite this detector produced ONE false positive
+    # (refusing a legitimate sales-tax question, because two passages about
+    # different counties naturally carry different figures) and ZERO true
+    # positives. A guard with that record is negative value: it blocks correct
+    # answers and catches nothing.
+    #
+    # The idea is still sound -- surfacing genuinely contradictory sources beats
+    # silently picking one -- but doing it reliably needs an NLI model to tell
+    # "these disagree" from "these are about different things", and that does not
+    # fit the latency budget. Numeric-overlap heuristics cannot make that
+    # distinction, which is what the measurement showed.
+    #
+    # Set true to re-enable; tests cover both states.
+    enabled: false
     min_disagreement: 0.45
     # Only fires between NEAR-DUPLICATE passages from DIFFERENT documents. Two
     # documents on the same subject routinely mention different numbers without
