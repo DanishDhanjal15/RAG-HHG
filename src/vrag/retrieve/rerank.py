@@ -34,13 +34,16 @@ from vrag.schemas import Evidence
 
 def export_cross_encoder(cfg: Config, model_id: str, quantize: bool) -> Path:
     """Export a HF sequence-classification cross-encoder to ONNX (+ int8)."""
-    from optimum.onnxruntime import ORTModelForSequenceClassification, ORTQuantizer
-    from optimum.onnxruntime.configuration import AutoQuantizationConfig
-    from transformers import AutoTokenizer
-
+    # Existence check first -- see the note in index/embedder.py:export_encoder.
+    # The runtime image has no `optimum`, so importing before this check breaks
+    # the very path that production always takes.
     target = cfg.paths.model_dir / f"{model_id.replace('/', '__')}__rerank"
     if (target / "model.onnx").exists():
         return target
+
+    from optimum.onnxruntime import ORTModelForSequenceClassification, ORTQuantizer
+    from optimum.onnxruntime.configuration import AutoQuantizationConfig
+    from transformers import AutoTokenizer
 
     target.mkdir(parents=True, exist_ok=True)
     fp32_dir = target / "_fp32"

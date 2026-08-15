@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
+from pathlib import Path
 
 from rich.console import Console
 from rich.table import Table
@@ -74,27 +76,58 @@ def main() -> None:
             json.loads(manifest.read_text(encoding="utf-8")).get("chunk", {}), indent=None
         )[:160])
 
-    console.print("uploading (this takes a few minutes)…")
-    api.upload_folder(
-        repo_id=args.repo_id,
-        repo_type=repo_type,
-        folder_path=str(index_dir),
-        commit_message=args.message,
-        ignore_patterns=[
-            # Build markers: a downloaded index must not look already-built to a
-            # machine that has built nothing.
-            ".*.done",
-            ".embed.progress",
-            # Build-time only. vectors.f32 is the raw fp32 memmap (FAISS keeps its
-            # own quantized copy); embed.bin feeds the embedder and BM25 indexer
-            # and nothing on the serve path reads it. Together they are the bulk of
-            # the directory, and on a scale-to-zero host every megabyte here is a
-            # megabyte on every cold start.
-            "vectors.f32",
-            "chunks/embed.bin",
-            "chunks/embed_offsets.npy",
-        ],
-    )
+    # Upload FILE BY FILE, with retries, skipping what is already there.
+    #
+    # `upload_folder` builds one commit and is all-or-nothing: a dropped
+    # connection 300 MB into a 370 MB transfer loses the whole thing. On a home
+    # connection that is not a hypothetical -- it happened twice here. Per-file
+    # commits are slightly noisier in the repo history and vastly more likely to
+    # finish.
+    already = {}
+    try:
+        info = api.repo_info(args.repo_id, repo_type=repo_type, files_metadata=True)
+        already = {s.rfilename: (s.size or 0) for s in (info.siblings or [])}
+    except Exception:  # noqa: BLE001 -- fresh repo
+        pass
+
+    skip_names = {".embed.progress", "vectors.f32"}
+    pending: list[tuple[Path, str]] = []
+    for f in sorted(files, key=lambda p: p.stat().st_size):
+        rel = f.relative_to(index_dir).as_posix()
+        if f.name.startswith(".") or f.name in skip_names:
+            continue
+        if rel in ("chunks/embed.bin", "chunks/embed_offsets.npy"):
+            continue
+        if already.get(rel) == f.stat().st_size:
+            console.print(f"  [dim]skip (already uploaded)[/] {rel}")
+            continue
+        pending.append((f, rel))
+
+    console.print(f"uploading {len(pending)} file(s), "
+                  f"{sum(f.stat().st_size for f, _ in pending) / 1e6:.0f} MB")
+
+    for f, rel in pending:
+        size_mb = f.stat().st_size / 1e6
+        for attempt in range(1, 5):
+            try:
+                api.upload_file(
+                    path_or_fileobj=str(f),
+                    path_in_repo=rel,
+                    repo_id=args.repo_id,
+                    repo_type=repo_type,
+                    commit_message=f"{args.message} ({rel})",
+                )
+                console.print(f"  [green]ok[/] {rel} [dim]{size_mb:.1f} MB[/]")
+                break
+            except Exception as exc:  # noqa: BLE001
+                if attempt == 4:
+                    console.print(f"  [red]FAILED[/] {rel}: {type(exc).__name__}")
+                    raise
+                wait = 5 * attempt
+                console.print(f"  [yellow]retry {attempt}/3[/] {rel} "
+                              f"({type(exc).__name__}) in {wait}s")
+                time.sleep(wait)
+
 
     console.print(f"\n[bold green]done[/] https://huggingface.co/datasets/{args.repo_id}")
     console.print("\nNow set this in configs/default.yaml (or as a Space secret):")

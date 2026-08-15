@@ -38,13 +38,18 @@ def export_encoder(cfg: Config, model_id: str, tag: str, quantize: bool) -> Path
     Idempotent: returns immediately if the artifact already exists, so a rebuild
     does not re-export.
     """
-    from optimum.onnxruntime import ORTModelForFeatureExtraction, ORTQuantizer
-    from optimum.onnxruntime.configuration import AutoQuantizationConfig
-    from transformers import AutoTokenizer
-
+    # Check for an existing export BEFORE importing anything. `optimum` and torch
+    # are build-time dependencies that the runtime image deliberately does not
+    # ship, so importing them at function entry makes the already-exported fast
+    # path -- the only path that ever runs in production -- crash with
+    # ModuleNotFoundError on a machine that has nothing to export.
     target = _onnx_dir(cfg, model_id, tag)
     if (target / "model.onnx").exists():
         return target
+
+    from optimum.onnxruntime import ORTModelForFeatureExtraction, ORTQuantizer
+    from optimum.onnxruntime.configuration import AutoQuantizationConfig
+    from transformers import AutoTokenizer
 
     target.mkdir(parents=True, exist_ok=True)
     fp32_dir = target / "_fp32"
